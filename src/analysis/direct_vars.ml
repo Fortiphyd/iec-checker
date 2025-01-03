@@ -15,6 +15,13 @@ let rec check_taint assigned_var rhs tainted_var =
          [Warn.mk ti.linenr ti.col "TaintedVariable" text]
         else
          []
+    | S.ExprFuncCall (_, s) ->
+      AU.get_stmt_exprs s
+      |>  List.fold_left
+      ~init:[]
+      ~f:(fun acc expr -> begin
+          acc @ check_taint assigned_var expr tainted_var
+        end)
     | S.ExprConstant (_,_) -> []
     | S.ExprUn (_, _, e) ->
       check_taint assigned_var e tainted_var
@@ -26,7 +33,6 @@ let rec check_taint assigned_var rhs tainted_var =
         []
       else
         [Warn.mk ti.linenr ti.col "TaintedVariable" text]
-    | _ -> []
 
 let trace_taint elem tainted_var =
   AU.get_pou_exprs elem

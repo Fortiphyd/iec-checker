@@ -2,6 +2,8 @@
 module S = Syntax
 module TI = Tok_info
 
+val get_stmt_exprs : S.statement -> S.expr list
+
 val expr_to_stmts : S.expr -> S.statement list
 (** [expr_to_stmts expr] Convert [expr] to a list of statements. *)
 

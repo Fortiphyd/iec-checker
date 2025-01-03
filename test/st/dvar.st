@@ -18,5 +18,6 @@ PROGRAM Simple
   i := 42 + head;
   i := unused_var + 42;
   i := -head;
+  i := Example(head);
   
 END_PROGRAM
