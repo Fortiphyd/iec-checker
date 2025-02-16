@@ -4,7 +4,7 @@ module TI = Tok_info
 
 let get_var_decls = function
   | S.IECFunction (_, f) -> f.variables
-  | S.IECFunctionBlock (_, fb) -> fb.variables
+  | S.IECFunctionBlock _ -> []
   | S.IECProgram (_, p) -> p.variables
   | S.IECClass (_, c) -> c.variables
   | S.IECInterface _ -> []
