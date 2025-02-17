@@ -75,7 +75,6 @@ let check_pou elem =
     ~f:(fun acc var_name -> begin
           acc @ trace_taint elem var_name
         end)
-
   
 let run elements =
   List.fold_left

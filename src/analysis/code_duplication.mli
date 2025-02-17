@@ -1,4 +1,4 @@
-(** Most basic *)
+(** Detect unused variables in the source code. *)
 open IECCheckerCore
 module S = Syntax
 
