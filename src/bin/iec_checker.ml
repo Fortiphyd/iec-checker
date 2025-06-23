@@ -189,14 +189,14 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
           let dst_file = Printf.sprintf "%s.dump.json" src_file in
           Dump.create_dump ~dst_file elements envs cfgs);
         let decl_warns = Declaration_analysis.run elements envs in
-        let unused_warns = Unused_variable.run elements in
+        (** let unused_warns = Unused_variable.run elements in *)
         let taint_warns = Taint_check.run elements in
         let ud_warns = Use_define.run elements in
         let lib_warns = Lib.run_all_checks elements envs cfgs (not verbose) in
         WO.print_report (
           parser_warns @
           decl_warns @
-          unused_warns @
+          (** unused_warns @ *)
           taint_warns @
           ud_warns @
           lib_warns)

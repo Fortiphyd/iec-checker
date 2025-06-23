@@ -13,11 +13,11 @@ let get_ty_size = function
   | S.TIME -> 8
   | S.LTIME -> 16
   | S.SINT -> 1
-  | S.INT -> 2
+  | S.INT -> 1
   | S.DINT -> 4
   | S.LINT -> 8
   | S.USINT -> 1
-  | S.UINT -> 2
+  | S.UINT -> 1
   | S.UDINT -> 4
   | S.ULINT -> 8
   | S.REAL -> 4

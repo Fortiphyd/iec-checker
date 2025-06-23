@@ -4,10 +4,10 @@
 let max_string_len = 4096
 
 (** Threshold of McCabe complexity to generate warnings. *)
-let mccabe_complexity_threshold = 15
+let mccabe_complexity_threshold = 40
 
 (** Threshold of maximum number of statements in POU to generate warnings. *)
-let statements_num_threshold = 25
+let statements_num_threshold = 60
 
 (* {{{ List of the enabled checks *)
 let check_plcopen_cp1 = true
