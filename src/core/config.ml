@@ -11,6 +11,7 @@ type t = {
   mccabe_complexity  : int;
   statements_count   : int;
   max_string_length  : int;
+  duplicate_code_size : int;
   output_format      : string;
   use_color          : bool;
   input_format       : string;
@@ -34,6 +35,7 @@ let default = {
   mccabe_complexity  = 15;
   statements_count   = 25;
   max_string_length  = 4096;
+  duplicate_code_size = 25;
   output_format      = "plain";
   use_color          = true;
   input_format       = "st";
@@ -61,6 +63,7 @@ let get () = !current
 let max_string_len () = (!current).max_string_length
 let mccabe_complexity_threshold () = (!current).mccabe_complexity
 let statements_num_threshold () = (!current).statements_count
+let duplicate_code_size () = (!current).duplicate_code_size
 
 (* ---------- JSON helpers ------------------------------------------------- *)
 
@@ -123,6 +126,7 @@ let of_yojson (json : Yojson.Safe.t) : (t, string) result =
       mccabe_complexity  = int_field thresholds "mccabe_complexity" ~default:default.mccabe_complexity;
       statements_count   = int_field thresholds "statements_count"  ~default:default.statements_count;
       max_string_length  = int_field thresholds "max_string_length" ~default:default.max_string_length;
+      duplicate_code_size = int_field thresholds "duplicate_code_size" ~default:default.duplicate_code_size;
       output_format      = string_field output "format"    ~default:default.output_format;
       use_color          = bool_field   output "color"     ~default:default.use_color;
       input_format       = string_field input  "format"    ~default:default.input_format;
@@ -158,6 +162,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
       "mccabe_complexity", `Int c.mccabe_complexity;
       "statements_count",  `Int c.statements_count;
       "max_string_length", `Int c.max_string_length;
+      "duplicate_code_size", `Int c.duplicate_code_size;
     ];
     "output", `Assoc [
       "format", `String c.output_format;

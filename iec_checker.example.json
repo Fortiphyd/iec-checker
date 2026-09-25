@@ -3,7 +3,8 @@
   "thresholds": {
     "mccabe_complexity": 15,
     "statements_count": 25,
-    "max_string_length": 4096
+    "max_string_length": 4096,
+    "duplicate_code_size": 25
   },
   "output": { "format": "plain", "color": true },
   "input": { "format": "st", "merge": false, "exclude_paths": [] },

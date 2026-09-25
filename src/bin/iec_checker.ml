@@ -284,6 +284,11 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
         let taint_warns =
           if pass_enabled "TaintedVariable"
           then Taint_check.run elements else [] in
+        let dup_warns =
+          let duplicates = pass_enabled "DuplicateCode"
+          and inconsistent = pass_enabled "InconsistentCopy" in
+          if duplicates || inconsistent
+          then Code_duplication.run ~duplicates ~inconsistent elements else [] in
         let ud_warns =
           if pass_enabled "UseDefine"
           then Use_define.run elements else [] in
@@ -293,6 +298,7 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
           stamp_file path decl_warns @
           stamp_file path unused_warns @
           stamp_file path taint_warns @
+          stamp_file path dup_warns @
           stamp_file path ud_warns @
           stamp_file path lib_warns)
           out_fmt;
@@ -308,6 +314,8 @@ let builtin_passes = [
   ("UnusedVariable",      "Detect unused local variables");
   ("UseDefine",           "Use-define chain analysis (array bounds)");
   ("TaintedVariable",     "Track data flow from located (AT %...) variables");
+  ("DuplicateCode",       "Detect duplicated code");
+  ("InconsistentCopy",    "Detect names a copy of code failed to rename");
 ]
 
 (** Print every registered detector to stdout, one per line, padded for
