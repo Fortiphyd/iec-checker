@@ -65,6 +65,22 @@
     let var_use = Syntax.VarUse.create_sym sv Syntax.VarUse.Elementary in
     var_use
 
+  (* Add array indexes to variable. *)
+  let add_array_indexes sv sub_list =
+    List.fold_left
+      sub_list
+      ~init:sv
+      ~f:(fun acc_sv e -> begin
+          match e with
+          | Syntax.ExprConstant (_,c) -> begin
+            let val_opt = c_get_int c in
+            match val_opt with
+            | Some v -> Syntax.SymVar.add_array_index acc_sv v
+            | None -> Syntax.SymVar.add_array_index_opaque acc_sv
+          end
+          | _ -> Syntax.SymVar.add_array_index_opaque acc_sv
+      end)
+
   let mk_var_use_sym sv =
     let var_use = Syntax.VarUse.create_sym sv Syntax.VarUse.Elementary in
     var_use
@@ -1225,21 +1241,7 @@ let multi_elem_var :=
   | name_ti = var_access; T_LBRACK; sub_list = subscript_list; T_RBRACK;
   {
    let (name, ti) = name_ti in
-   let sv = Syntax.SymVar.create name ti in
-   (* Add array indexes to variable. *)
-   List.fold_left
-     sub_list
-     ~init:sv
-     ~f:(fun acc_sv e -> begin
-         match e with
-         | Syntax.ExprConstant (_,c) -> begin
-           let val_opt = c_get_int c in
-           match val_opt with
-           | Some v -> Syntax.SymVar.add_array_index acc_sv v
-           | None -> Syntax.SymVar.add_array_index_opaque acc_sv
-         end
-         | _ -> Syntax.SymVar.add_array_index_opaque acc_sv
-     end)
+   add_array_indexes (Syntax.SymVar.create name ti) sub_list
   }
   (* | ~ = var_access; sub_list = nonempty_list(struct_variable); *)
 
@@ -1889,10 +1891,14 @@ let variable_access :=
   | ~ = variable_expr; <>
   | ~ = variable_expr; multibit_part_access; <>
   (* Non-standard extension to handle IF ARR1[i] < 10 THEN *)
-  | ~ = variable_expr; array_access; <>
+  | v = variable_expr; sub_list = array_access;
+  {
+    let sv = Syntax.SymVar.create (Syntax.VarUse.get_name v) (Syntax.VarUse.get_ti v) in
+    mk_var_use_sym (add_array_indexes sv sub_list)
+  }
 
 let array_access :=
-  | T_LBRACK; ~ = expression; T_RBRACK; <>
+  | T_LBRACK; ~ = subscript_list; T_RBRACK; <>
 
 (* Helper rule for variable_access.
    This is required to avoid shift/reduce conflict with identifier from func_name rule. *)

@@ -51,5 +51,32 @@ def test_use_define_array_nested():
         """.replace('\n', ''))
     assert rc == 0
     assert len(filter_warns(warns, 'OutOfBounds')) == 1
+
+
+def test_use_define_array_read():
+    fdump = f'stdin.dump.json'
+    warns, rc = check_program(
+        """
+        PROGRAM test_arr_read
+          VAR
+            ARR1: ARRAY [1..2] OF INT;
+            ARR2: ARRAY [1..2, 1..3] OF INT;
+            x : INT;
+          END_VAR
+          x := ARR1[0]; (* error *)
+          x := ARR1[2]; (* no false positive *)
+          IF ARR1[3] > 0 THEN (* error *)
+            x := ARR2[2, 3]; (* no false positive *)
+          END_IF;
+          x := ARR2[2, 4]; (* error *)
+          x := ARR1[x]; (* opaque index *)
+        END_PROGRAM
+        """.replace('\n', ''))
+    assert rc == 0
+    msgs = [w.msg for w in filter_warns(warns, 'OutOfBounds')]
+    assert len(msgs) == 3
+    assert any("index 0 is out" in m for m in msgs)
+    assert any("index 3 is out" in m for m in msgs)
+    assert any("index 4 is out" in m for m in msgs)
     with DumpManager(fdump):
         pass
