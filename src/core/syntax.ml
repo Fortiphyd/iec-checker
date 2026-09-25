@@ -749,6 +749,8 @@ module Task = struct
 
   let set_priority t v = {t with priority = Some v}
 
+  let get_name t = t.name
+
 end
 
 module ProgramConfig = struct

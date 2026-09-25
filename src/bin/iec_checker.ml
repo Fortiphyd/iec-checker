@@ -256,6 +256,7 @@ let builtin_warnings = [
   ("TaintedVariable",  "Output driven by an untrusted input without a bounds check", W.High);
   ("DuplicateCode",    "Duplicated code",                          W.Medium);
   ("InconsistentCopy", "Name a copy of code failed to rename",     W.High);
+  ("MultiTaskWrite",   "Output or global written by programs in different tasks", W.High);
 ]
 
 (** Errors are always reported, whatever the minimum severity. *)
@@ -350,6 +351,9 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
           and inconsistent = pass_enabled "InconsistentCopy" in
           if duplicates || inconsistent
           then Code_duplication.run ~duplicates ~inconsistent elements else [] in
+        let mt_warns =
+          if pass_enabled "MultiTaskWrite"
+          then Multi_task_writes.run elements else [] in
         let ud_warns =
           if pass_enabled "UseDefine"
           then Use_define.run elements else [] in
@@ -360,6 +364,7 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
           stamp_file path unused_warns @
           stamp_file path taint_warns @
           stamp_file path dup_warns @
+          stamp_file path mt_warns @
           stamp_file path ud_warns @
           stamp_file path lib_warns);
         if List.is_empty parser_warns then ReturnCode.ok else ReturnCode.fail
@@ -376,6 +381,7 @@ let builtin_passes = [
   ("TaintedVariable",     "Track data flow from located (AT %...) variables", W.High);
   ("DuplicateCode",       "Detect duplicated code", W.Medium);
   ("InconsistentCopy",    "Detect names a copy of code failed to rename", W.High);
+  ("MultiTaskWrite",      "Detect outputs and globals written from several tasks", W.High);
 ]
 
 (** Print every registered detector to stdout, one per line, padded for

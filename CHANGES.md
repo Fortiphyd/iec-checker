@@ -45,6 +45,7 @@
 - Add `PLCOpen-CP20` (#49)
 - Severity levels for all checks and the `--min-severity` CLI option (#76)
 - SARIF 2.1.0 output format (`-o sarif`)
+- `MultiTaskWrite`: outputs and globals written by programs in different tasks
 
 ## 0.4.0 (2022-02-26)
 
