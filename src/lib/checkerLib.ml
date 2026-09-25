@@ -24,6 +24,7 @@ let registered_detectors : Detector.t list = [
   Plcopen_cp6.detector;
   Plcopen_cp8.detector;
   Plcopen_cp9.detector;
+  Plcopen_cp12.detector;
   Plcopen_cp13.detector;
   Plcopen_cp16.detector;
   Plcopen_cp17.detector;

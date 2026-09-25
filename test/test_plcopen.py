@@ -51,6 +51,19 @@ def test_cp4():
     assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-CP4')) == expected
 
 
+def test_cp12():
+    f = 'st/plcopen-cp12.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN-CP12' in line]
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-CP12')) == expected
+    assert any('written in a loop' in w.msg for w in warns)
+
+
 def test_cp8():
     f = 'st/plcopen-cp8.st'
     fdump = f'{f}.dump.json'
