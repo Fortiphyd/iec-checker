@@ -1,9 +1,16 @@
-"""Tests for the TaintedVariable analysis pass."""
+"""Tests for the TaintedVariable analysis pass.
+
+Model:
+  * sources: physical inputs (%I) and network-writable memory (%M);
+  * sinks: outputs (%Q);
+  * sanitizers: bounds checks (LIMIT, MAX/MIN clamps, IF range guards).
+
+A finding is reported at the assignment to the sink. Each test program marks
+the lines that must be reported with a ``(* TAINTED *)`` comment.
+"""
 import sys
 import os
-import re
 import json
-from collections import Counter
 
 import pytest
 
@@ -12,174 +19,171 @@ sys.path.append(os.path.join(os.path.dirname(
 from python.core import run_checker, filter_warns  # noqa
 from python.dump import DumpManager  # noqa
 
-TAINT_RE = re.compile(r'Variable (\S+) has been tainted by variable (\S+)')
+MARKER = '(* TAINTED *)'
 
-# Two located sources that are never written, plus some plain locals.
-DECLS = """
-PROGRAM p
+DECLS = """PROGRAM p
 VAR
-  in1 AT %IW0 : INT;
-  in2 AT %IW1 : INT;
-  y : INT;
-  z : INT;
-  c : BOOL;
-  arr : ARRAY [0..3] OF INT;
+  level  AT %IW0   : INT;   (* physical input *)
+  sp     AT %MW100 : INT;   (* network-writable setpoint *)
+  sp_max AT %MW101 : INT;   (* network-writable limit *)
+  drive  AT %QW0   : INT;   (* output *)
+  drive2 AT %QW1   : INT;   (* output *)
+  tmp  : INT;
+  tmp2 : INT;
+  alarm : BOOL;
 END_VAR
 """
 
+# The current implementation predates the source/sink model.
+pending = pytest.mark.xfail(
+    strict=True, reason='source/sink/sanitizer model not implemented yet')
 
-def check_taint(tmp_path, source, args=[]):
-    """Run the checker on [source] and return a Counter of
-    (tainted_var, source_var) pairs from TaintedVariable warnings."""
+
+def run_taint(tmp_path, source, args=[]):
+    """Run the checker on [source] and return its TaintedVariable warnings."""
     f = tmp_path / 'input.st'
     f.write_text(source)
     warns, rc = run_checker([str(f)], args=args)
     assert rc == 0, warns
     with DumpManager(f'{f}.dump.json'):
         pass
-    return Counter(TAINT_RE.match(w.msg).groups()
-                   for w in filter_warns(warns, 'TaintedVariable'))
+    return filter_warns(warns, 'TaintedVariable')
 
 
-def check_body(tmp_path, body):
-    return check_taint(tmp_path, f'{DECLS}{body}\nEND_PROGRAM\n')
+def check(tmp_path, source, args=[]):
+    """Assert the reported lines are exactly those marked in [source]."""
+    expected = sorted(i for i, line in enumerate(source.splitlines(), 1)
+                      if MARKER in line)
+    reported = sorted(w.linenr for w in run_taint(tmp_path, source, args))
+    assert reported == expected
 
 
-# {{{ Supported flows
-def test_direct_assignment(tmp_path):
-    assert check_body(tmp_path, 'y := in1;') == Counter({('Y', 'IN1'): 1})
+def check_body(tmp_path, body, args=[]):
+    check(tmp_path, f'{DECLS}{body}\nEND_PROGRAM\n', args)
 
 
-def test_nested_expression(tmp_path):
-    assert check_body(tmp_path, 'y := (in1 + 1) * 2;') == \
-        Counter({('Y', 'IN1'): 1})
+# {{{ Untrusted data reaching an output
+def test_physical_input_to_output(tmp_path):
+    check_body(tmp_path, f'drive := level; {MARKER}')
 
 
-def test_unary_expression(tmp_path):
-    assert check_body(tmp_path, 'y := -in1;') == Counter({('Y', 'IN1'): 1})
+def test_network_memory_to_output(tmp_path):
+    check_body(tmp_path, f'drive := sp; {MARKER}')
 
 
-def test_multiple_sources(tmp_path):
-    assert check_body(tmp_path, 'y := in1 + in2;') == \
-        Counter({('Y', 'IN1'): 1, ('Y', 'IN2'): 1})
+def test_expression(tmp_path):
+    check_body(tmp_path, f'drive := sp * 2 + 10; {MARKER}')
 
 
-def test_function_call_argument(tmp_path):
-    assert check_body(tmp_path, 'y := MAX(in1, 3);') == \
-        Counter({('Y', 'IN1'): 1})
+def test_non_sanitizing_function(tmp_path):
+    check_body(tmp_path, f'drive := ABS(sp); {MARKER}')
 
 
-def test_array_element_lhs(tmp_path):
-    assert check_body(tmp_path, 'arr[1] := in1;') == \
-        Counter({('ARR', 'IN1'): 1})
+def test_direct_address_sink(tmp_path):
+    check_body(tmp_path, f'%QW2 := sp; {MARKER}')
 
 
-def test_function_return_value(tmp_path):
-    src = """
-FUNCTION f : INT
+@pending
+def test_through_intermediate(tmp_path):
+    check_body(tmp_path, f'tmp := sp;\ndrive := tmp; {MARKER}')
+
+
+@pending
+def test_through_chain_of_intermediates(tmp_path):
+    check_body(tmp_path, f'tmp := sp;\ntmp2 := tmp + 1;\ndrive := tmp2; {MARKER}')
+
+
+@pending
+def test_network_memory_written_by_program_is_still_untrusted(tmp_path):
+    # The network can still write %MW100 even if the program also does.
+    check_body(tmp_path,
+               f'drive := sp; {MARKER}\nIF alarm THEN\n  sp := 0;\nEND_IF;')
+
+
+@pending
+def test_bound_from_untrusted_source(tmp_path):
+    # A limit an attacker can set is not a bounds check.
+    check_body(tmp_path, f'drive := LIMIT(0, sp, sp_max); {MARKER}')
+
+
+@pending
+def test_retainted_after_sanitizing(tmp_path):
+    check_body(tmp_path,
+               f'tmp := LIMIT(0, sp, 1500);\ntmp := sp;\ndrive := tmp; {MARKER}')
+
+
+def test_in_function_block(tmp_path):
+    check(tmp_path, f"""FUNCTION_BLOCK fb
 VAR
-  in1 AT %IW0 : INT;
+  sp    AT %MW100 : INT;
+  drive AT %QW0   : INT;
 END_VAR
-f := in1;
-END_FUNCTION
-"""
-    assert check_taint(tmp_path, src) == Counter({('F', 'IN1'): 1})
-
-
-def test_function_block(tmp_path):
-    src = """
-FUNCTION_BLOCK fb
-VAR
-  in1 AT %IW0 : INT;
-  y : INT;
-END_VAR
-y := in1;
+drive := sp; {MARKER}
 END_FUNCTION_BLOCK
-"""
-    assert check_taint(tmp_path, src) == Counter({('Y', 'IN1'): 1})
+""")
+
+
+def test_message_names_sink_and_source(tmp_path):
+    [w] = run_taint(tmp_path, f'{DECLS}drive := sp;\nEND_PROGRAM\n')
+    assert 'DRIVE' in w.msg.upper() and 'SP' in w.msg.upper()
 # }}}
 
 
-# {{{ No false positives
-def test_constant_assignment(tmp_path):
-    assert check_body(tmp_path, 'y := 42;') == Counter()
+# {{{ No finding
+def test_constant_to_output(tmp_path):
+    check_body(tmp_path, 'drive := 100;')
 
 
-def test_unlocated_variable_is_not_a_source(tmp_path):
-    assert check_body(tmp_path, 'z := 1;\ny := z;') == Counter()
+def test_trusted_local_to_output(tmp_path):
+    check_body(tmp_path, 'tmp := 5;\ndrive := tmp;')
 
 
-def test_written_located_variable_is_not_a_source(tmp_path):
-    # A located variable written by the program is treated as an output.
-    assert check_body(tmp_path, 'in1 := 0;\ny := in1;') == Counter()
+@pending
+def test_untrusted_to_non_output(tmp_path):
+    check_body(tmp_path, 'tmp := sp;')
+
+
+@pending
+def test_output_is_not_a_source(tmp_path):
+    check_body(tmp_path, 'drive := drive2;')
+
+
+@pending
+def test_limit(tmp_path):
+    check_body(tmp_path, 'drive := LIMIT(0, sp, 1500);')
+
+
+@pending
+def test_max_min_clamp(tmp_path):
+    check_body(tmp_path, 'drive := MAX(0, MIN(sp, 1500));')
+
+
+@pending
+def test_sanitized_intermediate(tmp_path):
+    check_body(tmp_path, 'tmp := LIMIT(0, sp, 1500);\ndrive := tmp;')
+
+
+@pending
+def test_if_range_guard(tmp_path):
+    check_body(tmp_path, 'IF sp >= 0 AND sp <= 1500 THEN\n  drive := sp;\nEND_IF;')
+
+
+@pending
+def test_if_clamp(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'IF tmp > 1500 THEN',
+        '  tmp := 1500;',
+        'ELSIF tmp < 0 THEN',
+        '  tmp := 0;',
+        'END_IF;',
+        'drive := tmp;',
+    ]))
 # }}}
-
-
-# {{{ Integration with the driver
-def test_sample_file():
-    f = 'st/dvar.st'
-    warns, rc = run_checker([f])
-    assert rc == 0
-    with DumpManager(f'{f}.dump.json'):
-        pass
-    tainted = filter_warns(warns, 'TaintedVariable')
-    assert Counter((w.linenr, TAINT_RE.match(w.msg).groups())
-                   for w in tainted) == Counter({
-                       (16, ('I', 'HEAD')): 1,
-                       (18, ('I', 'HEAD')): 1,
-                       (19, ('I', 'UNUSED_VAR')): 1,
-                       (20, ('I', 'HEAD')): 1,
-                       (21, ('I', 'HEAD')): 1,
-                   })
 
 
 def test_disabled_by_config(tmp_path):
     cfg = tmp_path / 'iec_checker.json'
     cfg.write_text(json.dumps(
         {'detectors': {'disabled': ['TaintedVariable']}}))
-    assert check_taint(tmp_path, f'{DECLS}y := in1;\nEND_PROGRAM\n',
-                       args=['-c', str(cfg)]) == Counter()
-# }}}
-
-
-# {{{ Known limitations
-@pytest.mark.xfail(strict=True, reason='statements nested in IF are visited twice')
-def test_no_duplicate_warnings_in_if_body(tmp_path):
-    assert check_body(tmp_path, 'IF c THEN\n  y := in1;\nEND_IF;') == \
-        Counter({('Y', 'IN1'): 1})
-
-
-@pytest.mark.xfail(strict=True, reason='taint is not propagated between variables')
-def test_transitive(tmp_path):
-    assert check_body(tmp_path, 'y := in1;\nz := y;') == \
-        Counter({('Y', 'IN1'): 1, ('Z', 'IN1'): 1})
-
-
-@pytest.mark.xfail(strict=True, reason='named call parameters are not followed')
-def test_named_function_parameter(tmp_path):
-    assert check_body(tmp_path, 'y := MAX(IN1 := in1, IN2 := 3);') == \
-        Counter({('Y', 'IN1'): 1})
-
-
-@pytest.mark.xfail(strict=True, reason='array subscripts are not inspected')
-def test_array_index(tmp_path):
-    assert check_body(tmp_path, 'y := arr[in1];') == \
-        Counter({('Y', 'IN1'): 1})
-
-
-@pytest.mark.xfail(strict=True, reason='analysis is flow-insensitive')
-def test_source_written_after_use(tmp_path):
-    assert check_body(tmp_path, 'y := in1;\nin1 := 0;') == \
-        Counter({('Y', 'IN1'): 1})
-
-
-@pytest.mark.xfail(strict=True, reason='implicit flows are not tracked')
-def test_implicit_flow(tmp_path):
-    assert check_body(tmp_path, 'IF in1 > 5 THEN\n  y := 1;\nEND_IF;') == \
-        Counter({('Y', 'IN1'): 1})
-
-
-@pytest.mark.xfail(strict=True, reason='parser rejects direct addresses in expressions')
-def test_bare_direct_address(tmp_path):
-    assert check_body(tmp_path, 'y := %IW2;') == Counter({('Y', '%IW2'): 1})
-# }}}
+    check_body(tmp_path, 'drive := sp;', args=['-c', str(cfg)])
