@@ -402,6 +402,292 @@ END_PROGRAM
 # }}}
 
 
+# {{{ Calls
+PASS_FB = """FUNCTION_BLOCK pass
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_OUTPUT
+    out : INT;
+  END_VAR
+  out := raw * 2;
+END_FUNCTION_BLOCK
+"""
+
+CALLER = """PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    tmp : INT;
+    alarm : BOOL;
+    f1 : pass;
+  END_VAR
+"""
+
+
+def test_function_block_pass_through(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + f"""
+  f1(raw := sp);
+  drive := f1.out; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_trusted_input(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + """
+  f1(raw := 5);
+  drive := f1.out;
+END_PROGRAM
+""")
+
+
+def test_function_block_bounds_input(tmp_path):
+    check(tmp_path, """FUNCTION_BLOCK pass
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_OUTPUT
+    out : INT;
+  END_VAR
+  out := LIMIT(0, raw, 1500);
+END_FUNCTION_BLOCK
+""" + CALLER + """
+  f1(raw := sp);
+  drive := f1.out;
+END_PROGRAM
+""")
+
+
+def test_function_block_output_parameter(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + f"""
+  f1(raw := sp, out => drive); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_input_assigned_before_call(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + f"""
+  f1.raw := sp;
+  f1();
+  drive := f1.out; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_memory(tmp_path):
+    # The output is the input from the previous call.
+    check(tmp_path, """FUNCTION_BLOCK pass
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_OUTPUT
+    out : INT;
+  END_VAR
+  VAR
+    last : INT;
+  END_VAR
+  out := last;
+  last := raw;
+END_FUNCTION_BLOCK
+""" + CALLER + f"""
+  f1(raw := sp);
+  drive := f1.out; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_in_out(tmp_path):
+    check(tmp_path, """FUNCTION_BLOCK acc
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_IN_OUT
+    total : INT;
+  END_VAR
+  total := total + raw;
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    sum : INT;
+    a1 : acc;
+  END_VAR
+""" + f"""
+  a1(raw := sp, total := sum);
+  drive := sum; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_sink_inside_function_block(tmp_path):
+    check(tmp_path, f"""FUNCTION_BLOCK act
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR
+    drive AT %QW0 : INT;
+  END_VAR
+  drive := raw; {MARKER}
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp AT %MW100 : INT;
+    a1 : act;
+    a2 : act;
+  END_VAR
+  a1(raw := 5);
+  a2(raw := sp);
+END_PROGRAM
+""")
+
+
+def test_sink_inside_function_block_names_call(tmp_path):
+    [w] = run_taint(tmp_path, """FUNCTION_BLOCK act
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR
+    drive AT %QW0 : INT;
+  END_VAR
+  drive := raw;
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp AT %MW100 : INT;
+    a1 : act;
+  END_VAR
+  a1(raw := sp);
+END_PROGRAM
+""")
+    assert 'SP' in w.msg and 'line 16' in w.msg
+
+
+def test_nested_function_blocks(tmp_path):
+    check(tmp_path, PASS_FB + """FUNCTION_BLOCK outer
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  VAR_OUTPUT
+    y : INT;
+  END_VAR
+  VAR
+    inner : pass;
+  END_VAR
+  inner(raw := x);
+  y := inner.out;
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    o1 : outer;
+  END_VAR
+""" + f"""
+  o1(x := sp);
+  drive := o1.y; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_standard_timer(tmp_path):
+    check(tmp_path, f"""PROGRAM p
+  VAR
+    t_sp  AT %MD100 : TIME;
+    drive AT %QW0   : INT;
+    valve AT %QX0.0 : BOOL;
+    start : BOOL;
+    t1 : TON;
+  END_VAR
+  t1(IN := start, PT := t_sp);
+  valve := t1.Q;
+  drive := t1.ET; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_unknown_function_block(tmp_path):
+    check(tmp_path, f"""PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    x1 : vendor_fb;
+  END_VAR
+  x1(IN := sp);
+  drive := x1.OUT; {MARKER}
+END_PROGRAM
+""")
+
+
+ADD_FN = """FUNCTION second : INT
+  VAR_INPUT
+    a : INT;
+    b : INT;
+  END_VAR
+  second := b;
+END_FUNCTION
+"""
+
+FN_CALLER = """PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+  END_VAR
+"""
+
+
+def test_function_positional_arguments(tmp_path):
+    check(tmp_path, ADD_FN + FN_CALLER + f"""
+  drive := second(sp, 0);
+  drive := second(0, sp); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_named_arguments(tmp_path):
+    check(tmp_path, ADD_FN + FN_CALLER + f"""
+  drive := second(b := 0, a := sp);
+  drive := second(b := sp, a := 0); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_bounds_input(tmp_path):
+    check(tmp_path, """FUNCTION clamp : INT
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  clamp := LIMIT(0, x, 1500);
+END_FUNCTION
+""" + FN_CALLER + """
+  drive := clamp(sp);
+END_PROGRAM
+""")
+
+
+def test_function_early_return(tmp_path):
+    check(tmp_path, """FUNCTION f : INT
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  f := x;
+  RETURN;
+END_FUNCTION
+""" + FN_CALLER + f"""
+  drive := f(sp); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_value_from_previous_scan(tmp_path):
+    check_body(tmp_path, f'drive := tmp; {MARKER}\ntmp := sp;')
+# }}}
+
+
 def test_disabled_by_config(tmp_path):
     cfg = tmp_path / 'iec_checker.json'
     cfg.write_text(json.dumps(

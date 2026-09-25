@@ -10,7 +10,12 @@ module Warn = IECCheckerCore.Warn
 
    Statements are walked in order, tracking the taint of each variable. At
    the end of IF/CASE branches the states are joined; loops are iterated to a
-   fixpoint. *)
+   fixpoint. Programs and function blocks keep their variables between scans,
+   so their bodies are iterated to a fixpoint too.
+
+   Calls to function blocks and functions declared in the analyzed code use a
+   summary of the callee: the taint of its outputs, and the sinks in its body,
+   in terms of its inputs. *)
 
 (** Taint of a value: the untrusted variables it derives from, and whether a
     trusted lower/upper bound has been applied since. A value is clean when it
@@ -38,24 +43,81 @@ let unbounded ts =
   let srcs = String.Set.union_list (List.map ts ~f:(fun t -> t.srcs)) in
   normalize { srcs; lo = false; hi = false }
 
+(* {{{ Summaries *)
+type param_kind = PIn | POut | PInOut
+
+type finding = {
+  at : TI.t; (** Position of the sink assignment *)
+  sink : string;
+  tainted_by : String.Set.t;
+  calls : Int.Set.t; (** Lines of the calls that lead to this sink *)
+}
+
+type summary = {
+  params : (string * param_kind) list; (** In declaration order *)
+  results : taint String.Map.t;
+  (** Taint of outputs, in-outs and the function result, in terms of inputs *)
+  inner : finding list; (** Sinks in the body reachable from inputs *)
+}
+
+(** Inputs are represented in summaries as pseudo-sources named [$NAME]. *)
+let param_src p = "$" ^ p
+
+let is_param_src n = String.is_prefix n ~prefix:"$"
+
+(** Replace pseudo-sources in [srcs] with the sources of the arguments. *)
+let subst_srcs args srcs =
+  Set.fold srcs ~init:String.Set.empty ~f:(fun acc n ->
+      if is_param_src n then Set.union acc (args (String.drop_prefix n 1)).srcs
+      else Set.add acc n)
+
+let subst args t = normalize { t with srcs = subst_srcs args t.srcs }
+
+let timer_summary = {
+  params = [("IN", PIn); ("PT", PIn)];
+  (* 0 <= ET <= PT *)
+  results = String.Map.singleton "ET" { srcs = String.Set.singleton (param_src "PT");
+                                        lo = true; hi = false };
+  inner = [];
+}
+
+(** Standard function blocks. Their BOOL outputs and counters don't carry
+    taint from inputs. *)
+let std_summary = function
+  | "TON" | "TOF" | "TP" -> Some timer_summary
+  | "CTU" | "CTD" | "CTUD" | "R_TRIG" | "F_TRIG" | "SR" | "RS" ->
+    Some { params = []; results = String.Map.empty; inner = [] }
+  | _ -> None
+(* }}} *)
+
+type env = {
+  globals : S.DirVar.t String.Map.t; (** Located global variables *)
+  fbs : S.fb_decl String.Map.t;
+  funcs : S.function_decl String.Map.t;
+  summaries : summary option String.Table.t;
+  (** Computed summaries; [None] while one is being computed. *)
+}
+
 type ctx = {
+  env : env;
   sources : String.Set.t; (** Variables declared at %I or %M *)
   sinks : String.Set.t; (** Variables declared at %Q *)
   arrays : String.Set.t;
   (** The parser drops indexes when reading array elements, so every access to
       these is treated as an element access. *)
-  findings : (TI.t * string * String.Set.t) String.Table.t;
-  (** Keyed by position of the sink assignment *)
+  instances : string String.Map.t; (** Function block instance -> type *)
+  findings : finding String.Table.t; (** Keyed by position of the sink *)
+  returns : state ref; (** Join of the states at RETURN statements *)
 }
+
+(** Variable taints on the current path; [None] if the path is unreachable. *)
+and state = taint String.Map.t option
 
 (** Taint of a variable that has no entry in the state. *)
 let default ctx name = if Set.mem ctx.sources name then raw name else clean
 
 let lookup ctx m name =
   match Map.find m name with Some t -> t | None -> default ctx name
-
-(** Variable taints on the current path; [None] if the path is unreachable. *)
-type state = taint String.Map.t option
 
 let join_state ctx (a : state) (b : state) : state =
   match a, b with
@@ -96,17 +158,42 @@ let resolve ctx v =
       untrusted = is_untrusted_dir dv; output = is_output_dir dv }
   | S.VarUse.SymVar sv ->
     let full = S.VarUse.get_name v in
-    let name, member =
-      match String.lsplit2 full ~on:'.' with
-      | Some (hd, _) -> hd, true
-      | None -> full, false
-    in
-    { name;
-      partial = member || Set.mem ctx.arrays name
-                || not (List.is_empty (S.SymVar.get_array_indexes sv));
-      untrusted = Set.mem ctx.sources name;
-      output = Set.mem ctx.sinks name }
+    let indexed = Set.mem ctx.arrays full
+                  || not (List.is_empty (S.SymVar.get_array_indexes sv)) in
+    match String.lsplit2 full ~on:'.' with
+    | Some (inst, rest) when Map.mem ctx.instances inst ->
+      (* Members of function block instances are tracked separately. *)
+      let member, nested =
+        match String.lsplit2 rest ~on:'.' with
+        | Some (m, _) -> m, true
+        | None -> rest, false
+      in
+      { name = inst ^ "." ^ member; partial = nested || indexed;
+        untrusted = false; output = false }
+    | Some (base, _) ->
+      { name = base; partial = true;
+        untrusted = Set.mem ctx.sources base; output = Set.mem ctx.sinks base }
+    | None ->
+      { name = full; partial = indexed;
+        untrusted = Set.mem ctx.sources full; output = Set.mem ctx.sinks full }
 (* }}} *)
+
+(* Set once the summary machinery is defined below. *)
+let summary_of : (env -> string -> summary option) ref = ref (fun _ _ -> None)
+
+let record ctx (fd : finding) =
+  let key = Printf.sprintf "%d:%d" fd.at.linenr fd.at.col in
+  Hashtbl.update ctx.findings key ~f:(function
+      | Some old -> { old with tainted_by = Set.union old.tainted_by fd.tainted_by;
+                               calls = Set.union old.calls fd.calls }
+      | None -> fd)
+
+(** Report the sinks in a callee reached by the arguments of a call. *)
+let record_inner ctx (sm : summary) args (call_ti : TI.t) =
+  List.iter sm.inner ~f:(fun fd ->
+      let tainted_by = subst_srcs args (Set.filter fd.tainted_by ~f:is_param_src) in
+      if not (Set.is_empty tainted_by) then
+        record ctx { fd with tainted_by; calls = Int.Set.singleton call_ti.linenr })
 
 (* {{{ Expressions *)
 let bounded_below t = t.lo
@@ -139,12 +226,41 @@ let rec eval ctx m = function
   | S.ExprBin (_, _, (S.GT | S.LT | S.GE | S.LE | S.EQ | S.NEQ), _) -> clean
   | S.ExprBin (_, l, _, r) -> unbounded [eval ctx m l; eval ctx m r]
   | S.ExprUn (_, _, e) -> unbounded [eval ctx m e]
-  | S.ExprFuncCall (_, S.StmFuncCall (_, f, params)) ->
-    call ctx m (S.Function.get_name f) params
+  | S.ExprFuncCall (_, S.StmFuncCall (ti, f, params)) ->
+    call ctx m ti (S.Function.get_name f) params
   | S.ExprFuncCall (_, stmt) ->
     unbounded (List.map (AU.get_stmt_exprs stmt) ~f:(eval ctx m))
 
-and call ctx m fname params =
+(** Bind the actual parameters of a call to [params]. Returns the input taints
+    by parameter name, and the variables receiving outputs and in-outs. *)
+and bind ctx m params (actuals : S.func_param_assign list) =
+  let kind p = List.Assoc.find params ~equal:String.equal p in
+  let in_out_target p e targets =
+    match kind p, e with
+    | Some PInOut, S.ExprVariable (_, v) -> (p, v) :: targets
+    | _ -> targets
+  in
+  let positional =
+    List.filter_map params ~f:(function (p, (PIn | PInOut)) -> Some p | (_, POut) -> None)
+  in
+  let _, inputs, targets =
+    List.fold actuals ~init:(positional, [], [])
+      ~f:(fun (pos, inputs, targets) (a : S.func_param_assign) ->
+          match a.name, a.stmt with
+          | Some p, S.StmExpr (_, S.ExprBin (_, _, S.SENDTO, S.ExprVariable (_, v))) ->
+            (pos, inputs, (p, v) :: targets)
+          | Some p, S.StmExpr (_, S.ExprBin (_, _, S.ASSIGN, e)) ->
+            (pos, (p, eval ctx m e) :: inputs, in_out_target p e targets)
+          | None, S.StmExpr (_, e) -> begin
+              match pos with
+              | p :: rest -> (rest, (p, eval ctx m e) :: inputs, in_out_target p e targets)
+              | [] -> (pos, inputs, targets)
+            end
+          | _ -> (pos, inputs, targets))
+  in
+  (inputs, targets)
+
+and call ctx m ti fname params =
   let args =
     List.filter_map params ~f:(fun (p : S.func_param_assign) ->
         match p.name, p.stmt with
@@ -164,7 +280,15 @@ and call ctx m fname params =
     end
   | "MIN", _ :: _ -> min_of ts
   | "MAX", _ :: _ -> max_of ts
-  | _ -> unbounded ts
+  | _ -> begin
+      match !summary_of ctx.env fname with
+      | Some sm when Map.mem ctx.env.funcs fname ->
+        let inputs, _ = bind ctx m sm.params params in
+        let args p = Option.value (List.Assoc.find inputs ~equal:String.equal p) ~default:clean in
+        record_inner ctx sm args ti;
+        subst args (Option.value (Map.find sm.results fname) ~default:clean)
+      | _ -> unbounded ts
+    end
 (* }}} *)
 
 (* {{{ Conditions *)
@@ -218,20 +342,57 @@ let refine_stmt ctx st cond holds =
 (* }}} *)
 
 (* {{{ Statements *)
-let record ctx lhs r t =
-  let ti = S.VarUse.get_ti lhs in
-  let key = Printf.sprintf "%d:%d" ti.linenr ti.col in
-  Hashtbl.update ctx.findings key ~f:(function
-      | Some (ti, name, srcs) -> (ti, name, Set.union srcs t.srcs)
-      | None -> (ti, r.name, t.srcs))
-
 let assign ctx m lhs t =
   let r = resolve ctx lhs in
-  if r.output && not (is_clean t) then record ctx lhs r t;
+  if r.output && not (is_clean t) then
+    record ctx { at = S.VarUse.get_ti lhs; sink = r.name; tainted_by = t.srcs;
+                 calls = Int.Set.empty };
   (* The network can still write untrusted memory, so writes don't clean it. *)
   if r.untrusted then m
   else if r.partial then Map.set m ~key:r.name ~data:(join (lookup ctx m r.name) t)
   else Map.set m ~key:r.name ~data:t
+
+let assign_targets ctx m targets value =
+  List.fold targets ~init:m ~f:(fun m (p, v) -> assign ctx m v (value p))
+
+let call_instance ctx m (ti : TI.t) inst (sm : summary) actuals =
+  let key p = inst ^ "." ^ p in
+  let inputs, targets = bind ctx m sm.params actuals in
+  (* Inputs keep their value between calls, so a value passed at one call site
+     can still be seen at another. *)
+  let m =
+    List.fold inputs ~init:m ~f:(fun m (p, t) ->
+        Map.set m ~key:(key p) ~data:(join (lookup ctx m (key p)) t))
+  in
+  let args p = lookup ctx m (key p) in
+  record_inner ctx sm args ti;
+  let m =
+    Map.fold sm.results ~init:m ~f:(fun ~key:o ~data:t m ->
+        Map.set m ~key:(key o) ~data:(subst args t))
+  in
+  assign_targets ctx m targets (fun p -> lookup ctx m (key p))
+
+(** A function called as a statement: only its outputs and in-outs matter. *)
+let call_function ctx m (ti : TI.t) (sm : summary) actuals =
+  let inputs, targets = bind ctx m sm.params actuals in
+  let args p = Option.value (List.Assoc.find inputs ~equal:String.equal p) ~default:clean in
+  record_inner ctx sm args ti;
+  assign_targets ctx m targets (fun p ->
+      subst args (Option.value (Map.find sm.results p) ~default:clean))
+
+(** Unknown callee: every output depends on every input. *)
+let call_unknown ctx m name (actuals : S.func_param_assign list) =
+  let ts, targets =
+    List.fold actuals ~init:([], []) ~f:(fun (ts, targets) (a : S.func_param_assign) ->
+        match a.stmt with
+        | S.StmExpr (_, S.ExprBin (_, _, S.SENDTO, S.ExprVariable (_, v))) ->
+          (ts, ("", v) :: targets)
+        | S.StmExpr (_, S.ExprBin (_, _, S.ASSIGN, e)) | S.StmExpr (_, e) ->
+          (eval ctx m e :: ts, targets)
+        | _ -> (ts, targets))
+  in
+  let t = join (lookup ctx m name) (unbounded ts) in
+  assign_targets ctx (Map.set m ~key:name ~data:t) targets (fun _ -> t)
 
 let rec walk ctx (st : state) stmt : state =
   match st with
@@ -260,10 +421,28 @@ let rec walk ctx (st : state) stmt : state =
       | S.StmFor (_, ctrl, body) -> loop ctx (walk ctx st ctrl.assign) body
       | S.StmWhile (_, _, body) -> loop ctx st body
       | S.StmRepeat (_, body, _) -> loop ctx (walk_list ctx st body) body
-      | S.StmReturn _ -> None
-      (* Function block calls are not followed yet. *)
-      | S.StmExpr _ | S.StmElsif _ | S.StmFuncCall _
-      | S.StmEmpty _ | S.StmExit _ | S.StmContinue _ -> st
+      | S.StmReturn _ ->
+        ctx.returns := join_state ctx !(ctx.returns) st;
+        None
+      | S.StmFuncCall (ti, f, actuals) -> begin
+          let name = S.Function.get_name f in
+          let sm = function
+            | Some ty -> !summary_of ctx.env ty
+            | None -> None
+          in
+          match Map.find ctx.instances name with
+          | Some ty -> begin
+              match sm (Some ty) with
+              | Some s -> Some (call_instance ctx m ti name s actuals)
+              | None -> Some (call_unknown ctx m name actuals)
+            end
+          | None -> begin
+              match sm (Option.some_if (Map.mem ctx.env.funcs name) name) with
+              | Some s -> Some (call_function ctx m ti s actuals)
+              | None -> Some (call_unknown ctx m name actuals)
+            end
+        end
+      | S.StmExpr _ | S.StmElsif _ | S.StmEmpty _ | S.StmExit _ | S.StmContinue _ -> st
     end
 
 and walk_list ctx st stmts = List.fold stmts ~init:st ~f:(walk ctx)
@@ -273,7 +452,28 @@ and loop ctx st body =
   if state_equal next st then st else loop ctx next body
 (* }}} *)
 
-(* {{{ Global variables *)
+(* {{{ POUs *)
+type pou = {
+  decls : S.VarDecl.t list;
+  stmts : S.statement list;
+  persistent : bool; (** Variables keep their values between calls *)
+  result : string option; (** Name of the function result variable *)
+}
+
+let pou_of_fb (fb : S.fb_decl) =
+  { decls = fb.variables; stmts = fb.statements; persistent = true; result = None }
+
+let pou_of_func (f : S.function_decl) =
+  { decls = f.variables; stmts = f.statements; persistent = false;
+    result = Some (S.Function.get_name f.id) }
+
+let pou_of_elem = function
+  | S.IECProgram (_, p) ->
+    Some { decls = p.variables; stmts = p.statements; persistent = true; result = None }
+  | S.IECFunctionBlock (_, fb) -> Some (pou_of_fb fb)
+  | S.IECFunction (_, f) -> Some (pou_of_func f)
+  | _ -> None
+
 let located_decls decls =
   List.filter_map decls ~f:(fun d ->
       Option.map (S.VarDecl.get_located_at d) ~f:(fun dv -> (S.VarDecl.get_var_name d, dv)))
@@ -290,10 +490,8 @@ let collect_globals elements =
         c.variables @ List.concat_map c.resources ~f:(fun (r : S.resource_decl) -> r.variables)
       | e -> List.filter (AU.get_var_decls e) ~f:is_global)
   |> located_decls
-(* }}} *)
 
-let check_pou globals elem =
-  let decls = AU.get_var_decls elem in
+let mk_ctx env decls findings =
   (* A global is visible unless the POU declares its own variable with that
      name; VAR_EXTERNAL refers to the global. *)
   let shadowed =
@@ -305,46 +503,139 @@ let check_pou globals elem =
   in
   let located =
     Map.merge_skewed
-      (Map.filter_keys globals ~f:(fun n -> not (Set.mem shadowed n)))
+      (Map.filter_keys env.globals ~f:(fun n -> not (Set.mem shadowed n)))
       (located_decls decls)
       ~combine:(fun ~key:_ _ local -> local)
   in
-  let located_where f =
-    Map.filter located ~f |> Map.keys |> String.Set.of_list
-  in
-  let names_where f =
+  let located_where f = Map.filter located ~f |> Map.keys |> String.Set.of_list in
+  let typed f =
     List.filter_map decls ~f:(fun d ->
-        if f d then Some (S.VarDecl.get_var_name d) else None)
-    |> String.Set.of_list
+        Option.bind (S.VarDecl.get_ty_spec d) ~f:(f (S.VarDecl.get_var_name d)))
   in
-  let ctx = {
+  let is_fb ty = Map.mem env.fbs ty || Option.is_some (std_summary ty) in
+  {
+    env;
     sources = located_where is_untrusted_dir;
     sinks = located_where is_output_dir;
-    arrays = names_where (fun d ->
-        match S.VarDecl.get_ty_spec d with
-        | Some (S.DTyDeclArrayType _) -> true
-        | _ -> false);
-    findings = String.Table.create ();
-  } in
-  ignore (walk_list ctx (Some String.Map.empty) (AU.get_top_stmts elem) : state);
-  Hashtbl.data ctx.findings
-  |> List.sort ~compare:(fun ((a : TI.t), _, _) ((b : TI.t), _, _) ->
-      match Int.compare a.linenr b.linenr with 0 -> Int.compare a.col b.col | c -> c)
-  |> List.map ~f:(fun ((ti : TI.t), sink, srcs) ->
-      let text =
-        Printf.sprintf "Output %s is driven by untrusted %s without a bounds check"
-          sink (String.concat ~sep:", " (Set.to_list srcs))
+    arrays = String.Set.of_list (typed (fun name -> function
+        | S.DTyDeclArrayType _ -> Some name
+        | _ -> None));
+    instances = String.Map.of_alist_reduce ~f:(fun first _ -> first)
+        (typed (fun name -> function
+             | S.DTyDeclSingleElement (S.DTySpecSimple ty, _) when is_fb ty -> Some (name, ty)
+             | _ -> None));
+    findings;
+    returns = ref None;
+  }
+
+(** Walk the body of [pou] from [init] and return the state at its exit. *)
+let analyze ctx pou (init : state) : state =
+  let once st =
+    ctx.returns := None;
+    let out = walk_list ctx st pou.stmts in
+    join_state ctx out !(ctx.returns)
+  in
+  if pou.persistent then begin
+    (* Values left at the end of one scan are seen by the next one. *)
+    let rec fix st =
+      let next = join_state ctx st (once st) in
+      if state_equal next st then st else fix next
+    in
+    once (fix init)
+  end
+  else once init
+
+let params_of decls =
+  List.filter_map decls ~f:(fun d ->
+      let kind = match S.VarDecl.get_attr d with
+        | Some (S.VarDecl.VarIn _) -> Some PIn
+        | Some (S.VarDecl.VarOut _) -> Some POut
+        | Some S.VarDecl.VarInOut -> Some PInOut
+        | _ -> None
       in
-      Warn.mk ti.linenr ti.col "TaintedVariable" text)
+      Option.map kind ~f:(fun k -> (S.VarDecl.get_var_ti d, (S.VarDecl.get_var_name d, k))))
+  (* The parser doesn't keep declaration order. *)
+  |> List.sort ~compare:(fun ((a : TI.t), _) ((b : TI.t), _) ->
+      match Int.compare a.linenr b.linenr with 0 -> Int.compare a.col b.col | c -> c)
+  |> List.map ~f:snd
+
+let compute_summary env pou =
+  let params = params_of pou.decls in
+  let ctx = mk_ctx env pou.decls (String.Table.create ()) in
+  let init =
+    List.fold params ~init:String.Map.empty ~f:(fun m (p, k) ->
+        match k with
+        | PIn | PInOut -> Map.set m ~key:p ~data:(raw (param_src p))
+        | POut -> m)
+  in
+  let exit = Option.value (analyze ctx pou (Some init)) ~default:String.Map.empty in
+  let outs =
+    List.filter_map params ~f:(function (p, (POut | PInOut)) -> Some p | (_, PIn) -> None)
+    @ Option.to_list pou.result
+  in
+  { params;
+    results = String.Map.of_alist_reduce ~f:(fun a _ -> a)
+        (List.map outs ~f:(fun o -> (o, lookup ctx exit o)));
+    inner = Hashtbl.data ctx.findings
+            |> List.filter ~f:(fun fd -> Set.exists fd.tainted_by ~f:is_param_src) }
+
+let () =
+  summary_of := fun env name ->
+    match Hashtbl.find env.summaries name with
+    | Some s -> s (* [None] for a recursive call *)
+    | None ->
+      let pou =
+        match Map.find env.fbs name, Map.find env.funcs name with
+        | Some fb, _ -> Some (pou_of_fb fb)
+        | None, Some f -> Some (pou_of_func f)
+        | None, None -> None
+      in
+      match pou with
+      | None -> std_summary name
+      | Some pou ->
+        Hashtbl.set env.summaries ~key:name ~data:None;
+        let s = compute_summary env pou in
+        Hashtbl.set env.summaries ~key:name ~data:(Some s);
+        Some s
+(* }}} *)
+
+let to_warning fd =
+  let via =
+    match Set.to_list fd.calls with
+    | [] -> ""
+    | [l] -> Printf.sprintf " (through the call on line %d)" l
+    | ls -> Printf.sprintf " (through calls on lines %s)"
+              (String.concat ~sep:", " (List.map ls ~f:Int.to_string))
+  in
+  let text =
+    Printf.sprintf "Output %s is driven by untrusted %s without a bounds check%s"
+      fd.sink (String.concat ~sep:", " (Set.to_list fd.tainted_by)) via
+  in
+  Warn.mk fd.at.linenr fd.at.col "TaintedVariable" text
 
 let run elements =
-  let globals = collect_globals elements in
-  List.fold_left
-    elements
-    ~f:(fun warns e ->
-        let ws = match e with
-          | S.IECProgram _ | S.IECFunction _ | S.IECFunctionBlock _ -> check_pou globals e
-          | _ -> []
-        in
-        warns @ ws)
-    ~init:[]
+  let env = {
+    globals = collect_globals elements;
+    fbs = String.Map.of_alist_reduce ~f:(fun a _ -> a)
+        (List.filter_map elements ~f:(function
+             | S.IECFunctionBlock (_, fb) -> Some (S.FunctionBlock.get_name fb.id, fb)
+             | _ -> None));
+    funcs = String.Map.of_alist_reduce ~f:(fun a _ -> a)
+        (List.filter_map elements ~f:(function
+             | S.IECFunction (_, f) -> Some (S.Function.get_name f.id, f)
+             | _ -> None));
+    summaries = String.Table.create ();
+  } in
+  (* Shared by all POUs: a sink in a function block can be reported both when
+     checking the block and through a call. *)
+  let findings = String.Table.create () in
+  List.iter elements ~f:(fun e ->
+      Option.iter (pou_of_elem e) ~f:(fun pou ->
+          let ctx = mk_ctx env pou.decls findings in
+          ignore (analyze ctx pou (Some String.Map.empty) : state)));
+  Hashtbl.data findings
+  |> List.sort ~compare:(fun a b ->
+      match Int.compare a.at.linenr b.at.linenr with
+      | 0 -> Int.compare a.at.col b.at.col
+      | c -> c)
+  |> List.map ~f:to_warning
