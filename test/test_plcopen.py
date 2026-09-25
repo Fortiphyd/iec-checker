@@ -205,7 +205,8 @@ def test_n1():
     fdump = f'{f}.dump.json'
     warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(warns, 'PLCOPEN-N1')) == 1
+    [w] = filter_warns(warns, 'PLCOPEN-N1')
+    assert '%MW10.2.4.1' in w.msg
     with DumpManager(fdump):
         pass
 
