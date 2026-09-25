@@ -317,6 +317,91 @@ def test_if_clamp(tmp_path):
 # }}}
 
 
+# {{{ Global variables
+def config(resource_vars='', config_vars=''):
+    return f"""CONFIGURATION cfg
+  VAR_GLOBAL
+{config_vars}
+  END_VAR
+  RESOURCE res ON PLC
+    VAR_GLOBAL
+{resource_vars}
+    END_VAR
+    TASK main(INTERVAL := T#10MS, PRIORITY := 1);
+    PROGRAM inst WITH main : p;
+  END_RESOURCE
+END_CONFIGURATION
+"""
+
+
+GLOBALS = """    g_sp    AT %MW100 : INT;
+    g_drive AT %QW0   : INT;"""
+
+
+def test_global_via_var_external(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + f"""PROGRAM p
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_global_in_resource(tmp_path):
+    check(tmp_path, config(resource_vars=GLOBALS) + f"""PROGRAM p
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_global_without_var_external(tmp_path):
+    # Some dialects allow using globals without declaring them.
+    check(tmp_path, config(config_vars=GLOBALS) + f"""PROGRAM p
+  g_drive := g_sp; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_global_in_function_block(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + f"""FUNCTION_BLOCK fb
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp; {MARKER}
+END_FUNCTION_BLOCK
+""")
+
+
+def test_global_bounded(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + """PROGRAM p
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := LIMIT(0, g_sp, 1500);
+END_PROGRAM
+""")
+
+
+def test_local_shadows_global(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + """PROGRAM p
+  VAR
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp;
+END_PROGRAM
+""")
+# }}}
+
+
 def test_disabled_by_config(tmp_path):
     cfg = tmp_path / 'iec_checker.json'
     cfg.write_text(json.dumps(

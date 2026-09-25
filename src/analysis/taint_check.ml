@@ -273,17 +273,53 @@ and loop ctx st body =
   if state_equal next st then st else loop ctx next body
 (* }}} *)
 
-let check_pou elem =
+(* {{{ Global variables *)
+let located_decls decls =
+  List.filter_map decls ~f:(fun d ->
+      Option.map (S.VarDecl.get_located_at d) ~f:(fun dv -> (S.VarDecl.get_var_name d, dv)))
+  |> String.Map.of_alist_reduce ~f:(fun first _ -> first)
+
+let is_global d =
+  match S.VarDecl.get_attr d with Some (S.VarDecl.VarGlobal _) -> true | _ -> false
+
+(** Located global variables, declared in configurations, resources or
+    VAR_GLOBAL blocks of POUs. *)
+let collect_globals elements =
+  List.concat_map elements ~f:(function
+      | S.IECConfiguration (_, c) ->
+        c.variables @ List.concat_map c.resources ~f:(fun (r : S.resource_decl) -> r.variables)
+      | e -> List.filter (AU.get_var_decls e) ~f:is_global)
+  |> located_decls
+(* }}} *)
+
+let check_pou globals elem =
   let decls = AU.get_var_decls elem in
+  (* A global is visible unless the POU declares its own variable with that
+     name; VAR_EXTERNAL refers to the global. *)
+  let shadowed =
+    List.filter_map decls ~f:(fun d ->
+        match S.VarDecl.get_attr d with
+        | Some (S.VarDecl.VarExternal _) -> None
+        | _ -> Some (S.VarDecl.get_var_name d))
+    |> String.Set.of_list
+  in
+  let located =
+    Map.merge_skewed
+      (Map.filter_keys globals ~f:(fun n -> not (Set.mem shadowed n)))
+      (located_decls decls)
+      ~combine:(fun ~key:_ _ local -> local)
+  in
+  let located_where f =
+    Map.filter located ~f |> Map.keys |> String.Set.of_list
+  in
   let names_where f =
     List.filter_map decls ~f:(fun d ->
         if f d then Some (S.VarDecl.get_var_name d) else None)
     |> String.Set.of_list
   in
-  let located f d = Option.value_map (S.VarDecl.get_located_at d) ~default:false ~f in
   let ctx = {
-    sources = names_where (located is_untrusted_dir);
-    sinks = names_where (located is_output_dir);
+    sources = located_where is_untrusted_dir;
+    sinks = located_where is_output_dir;
     arrays = names_where (fun d ->
         match S.VarDecl.get_ty_spec d with
         | Some (S.DTyDeclArrayType _) -> true
@@ -302,11 +338,12 @@ let check_pou elem =
       Warn.mk ti.linenr ti.col "TaintedVariable" text)
 
 let run elements =
+  let globals = collect_globals elements in
   List.fold_left
     elements
     ~f:(fun warns e ->
         let ws = match e with
-          | S.IECProgram _ | S.IECFunction _ | S.IECFunctionBlock _ -> check_pou e
+          | S.IECProgram _ | S.IECFunction _ | S.IECFunctionBlock _ -> check_pou globals e
           | _ -> []
         in
         warns @ ws)
