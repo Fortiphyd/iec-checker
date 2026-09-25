@@ -396,7 +396,17 @@ rule initial tokinfo =
   (* {{{ Misc. *)
   | "(*"             { comment tokinfo 1 lexbuf }
   | "//"             { singleline_comment tokinfo lexbuf }
-  | "%"              { let ti = tokinfo lexbuf in direct_variable (Syntax.DirVar.create ti) ti lexbuf }
+  | "%"
+  {
+    let ti = tokinfo lexbuf in
+    let start_pos = lexbuf.lex_start_pos and start_p = lexbuf.lex_start_p in
+    let tok = direct_variable (Syntax.DirVar.create ti) ti lexbuf in
+    (* [direct_variable] matches the address piece by piece; make the lexeme
+       span all of it so errors point at the whole token. *)
+    lexbuf.lex_start_pos <- start_pos;
+    lexbuf.lex_start_p <- start_p;
+    tok
+  }
   | "STRING#" '\''   { let ti = tokinfo lexbuf in sstring_literal (Buffer.create 19) ti lexbuf }
   | '\''             { let ti = tokinfo lexbuf in sstring_literal (Buffer.create 19) ti lexbuf }
   | "STRING#" '"'    { let ti = tokinfo lexbuf in dstring_literal (Buffer.create 19) ti lexbuf }

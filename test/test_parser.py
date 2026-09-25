@@ -167,6 +167,13 @@ def test_direct_variables():
     ]
 
 
+def test_error_on_direct_variable_names_the_token():
+    warns, rc = check_program('PROGRAM p VAR y : %IW2; END_VAR END_PROGRAM')
+    assert rc != 0
+    [w] = [w for w in warns if w.id == 'ParserError']
+    assert w.msg == 'unexpected token `%IW2`'
+
+
 def test_statements_order():
     """Test that POU statements are arranged in the correct order."""
     fdump = f'stdin.dump.json'
