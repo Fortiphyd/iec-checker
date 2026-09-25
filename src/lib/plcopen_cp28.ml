@@ -20,7 +20,7 @@ let check_elem elem =
           match expr with
           | S.ExprBin(ti, lhs, operator, rhs) -> begin
               match operator with
-              | NEG | EQ -> begin
+              | EQ | NEQ -> begin
                   if (is_time_or_phys lhs) || (is_time_or_phys rhs) then begin
                     let msg = "Time and physical measures comparisons shall not be equality or inequality" in
                     acc @ [(Warn.mk ti.linenr ti.col "PLCOPEN-CP28" msg)]
