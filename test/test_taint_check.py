@@ -176,6 +176,15 @@ def test_if_guard_on_array_element(tmp_path):
     ]))
 
 
+def test_direct_address_source(tmp_path):
+    check_body(tmp_path, f'drive := %IW5 * 2; {MARKER}')
+
+
+def test_direct_address_source_and_sink(tmp_path):
+    [w] = run_taint(tmp_path, f'{DECLS}%QW5 := %MW200;\nEND_PROGRAM\n')
+    assert '%QW5' in w.msg and '%MW200' in w.msg
+
+
 def test_in_function_block(tmp_path):
     check(tmp_path, f"""FUNCTION_BLOCK fb
 VAR
@@ -256,6 +265,19 @@ def test_early_return_guards(tmp_path):
         'END_IF;',
         'drive := sp;',
     ]))
+
+
+def test_direct_address_limit(tmp_path):
+    check_body(tmp_path, '%QW5 := LIMIT(0, %MW200, 1500);')
+
+
+def test_direct_address_if_guard(tmp_path):
+    check_body(tmp_path,
+               'IF %IW5 >= 0 AND %IW5 <= 1500 THEN\n  drive := %IW5;\nEND_IF;')
+
+
+def test_direct_bool_input(tmp_path):
+    check_body(tmp_path, 'valve := %IX1.0;')
 
 
 def test_untrusted_to_non_output(tmp_path):

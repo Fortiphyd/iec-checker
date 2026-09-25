@@ -82,12 +82,6 @@ let is_untrusted_dir dv =
 let is_output_dir dv =
   match S.DirVar.get_loc dv with Some S.DirVar.LocQ -> true | _ -> false
 
-(* [S.DirVar.to_string] prints the size before the location. *)
-let dir_name dv =
-  let loc = Option.value_map (S.DirVar.get_loc dv) ~default:"" ~f:S.DirVar.location_to_string
-  and sz = Option.value_map (S.DirVar.get_size dv) ~default:"" ~f:S.DirVar.size_to_string in
-  Printf.sprintf "%%%s%s%s" loc sz (S.DirVar.path_to_string (S.DirVar.get_path dv))
-
 type var_ref = {
   name : string;
   partial : bool; (** Array element or struct member *)
@@ -98,7 +92,7 @@ type var_ref = {
 let resolve ctx v =
   match S.VarUse.get_loc v with
   | S.VarUse.DirVar dv ->
-    { name = dir_name dv; partial = false;
+    { name = S.DirVar.get_name dv; partial = false;
       untrusted = is_untrusted_dir dv; output = is_output_dir dv }
   | S.VarUse.SymVar sv ->
     let full = S.VarUse.get_name v in
