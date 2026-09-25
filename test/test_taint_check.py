@@ -26,17 +26,19 @@ VAR
   level  AT %IW0   : INT;   (* physical input *)
   sp     AT %MW100 : INT;   (* network-writable setpoint *)
   sp_max AT %MW101 : INT;   (* network-writable limit *)
+  start  AT %IX0.0 : BOOL;  (* physical BOOL input *)
   drive  AT %QW0   : INT;   (* output *)
   drive2 AT %QW1   : INT;   (* output *)
+  valve  AT %QX0.0 : BOOL;  (* BOOL output *)
   tmp  : INT;
   tmp2 : INT;
   alarm : BOOL;
+  i : INT;
 END_VAR
 """
 
-# The current implementation predates the source/sink model.
 pending = pytest.mark.xfail(
-    strict=True, reason='source/sink/sanitizer model not implemented yet')
+    strict=True, reason='bounds from IF conditions not implemented yet')
 
 
 def run_taint(tmp_path, source, args=[]):
@@ -83,33 +85,67 @@ def test_direct_address_sink(tmp_path):
     check_body(tmp_path, f'%QW2 := sp; {MARKER}')
 
 
-@pending
 def test_through_intermediate(tmp_path):
     check_body(tmp_path, f'tmp := sp;\ndrive := tmp; {MARKER}')
 
 
-@pending
 def test_through_chain_of_intermediates(tmp_path):
     check_body(tmp_path, f'tmp := sp;\ntmp2 := tmp + 1;\ndrive := tmp2; {MARKER}')
 
 
-@pending
 def test_network_memory_written_by_program_is_still_untrusted(tmp_path):
     # The network can still write %MW100 even if the program also does.
     check_body(tmp_path,
                f'drive := sp; {MARKER}\nIF alarm THEN\n  sp := 0;\nEND_IF;')
 
 
-@pending
 def test_bound_from_untrusted_source(tmp_path):
     # A limit an attacker can set is not a bounds check.
     check_body(tmp_path, f'drive := LIMIT(0, sp, sp_max); {MARKER}')
 
 
-@pending
 def test_retainted_after_sanitizing(tmp_path):
     check_body(tmp_path,
                f'tmp := LIMIT(0, sp, 1500);\ntmp := sp;\ndrive := tmp; {MARKER}')
+
+
+def test_one_sided_min_is_not_enough(tmp_path):
+    check_body(tmp_path, f'drive := MIN(sp, 1500); {MARKER}')
+
+
+def test_one_sided_max_is_not_enough(tmp_path):
+    check_body(tmp_path, f'drive := MAX(sp, 0); {MARKER}')
+
+
+def test_network_memory_overwritten_earlier_in_scan(tmp_path):
+    # Some PLCs service network writes in the middle of a scan.
+    check_body(tmp_path, f'sp := 0;\ndrive := sp; {MARKER}')
+
+
+def test_no_duplicate_warnings_in_if_body(tmp_path):
+    check_body(tmp_path, f'IF alarm THEN\n  drive := sp; {MARKER}\nEND_IF;')
+
+
+def test_join_after_case(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'CASE i OF',
+        '  1: tmp := sp;',
+        '  2: tmp := 0;',
+        'END_CASE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_loop_carried(tmp_path):
+    # tmp is tainted at the end of one iteration and used in the next.
+    check_body(tmp_path, '\n'.join([
+        'tmp := 0;',
+        'WHILE i < 10 DO',
+        f'  drive := tmp; {MARKER}',
+        '  tmp := sp;',
+        '  i := i + 1;',
+        'END_WHILE;',
+    ]))
 
 
 def test_in_function_block(tmp_path):
@@ -138,27 +174,47 @@ def test_trusted_local_to_output(tmp_path):
     check_body(tmp_path, 'tmp := 5;\ndrive := tmp;')
 
 
-@pending
+def test_bool_input(tmp_path):
+    # Bounds checks don't apply to BOOL inputs, so they aren't sources.
+    check_body(tmp_path, 'valve := start AND NOT alarm;')
+
+
+def test_comparison_result(tmp_path):
+    check_body(tmp_path, 'valve := level > 100;')
+
+
+def test_every_case_branch_overwrites(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'CASE i OF',
+        '  1: tmp := 0;',
+        'ELSE',
+        '  tmp := 1;',
+        'END_CASE;',
+        'drive := tmp;',
+    ]))
+
+
+def test_named_limit(tmp_path):
+    check_body(tmp_path, 'drive := LIMIT(MN := 0, IN := sp, MX := 1500);')
+
+
 def test_untrusted_to_non_output(tmp_path):
     check_body(tmp_path, 'tmp := sp;')
 
 
-@pending
 def test_output_is_not_a_source(tmp_path):
     check_body(tmp_path, 'drive := drive2;')
 
 
-@pending
 def test_limit(tmp_path):
     check_body(tmp_path, 'drive := LIMIT(0, sp, 1500);')
 
 
-@pending
 def test_max_min_clamp(tmp_path):
     check_body(tmp_path, 'drive := MAX(0, MIN(sp, 1500));')
 
 
-@pending
 def test_sanitized_intermediate(tmp_path):
     check_body(tmp_path, 'tmp := LIMIT(0, sp, 1500);\ndrive := tmp;')
 
