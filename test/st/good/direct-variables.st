@@ -20,4 +20,14 @@ PROGRAM simple
   END_VAR
 
   v01 := 92;
+  %QW2 := 1;
+
+  (* Directly represented variables used in expressions *)
+  v14 := %MW10;
+  v15 := %IW215 + 1;
+  v16 := MAX(%MW11, 0);
+  %QW3 := %IW3;
+  IF %IX1.0 THEN
+    v01 := (%ID4);
+  END_IF;
 END_PROGRAM

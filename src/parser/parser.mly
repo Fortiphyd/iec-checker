@@ -1885,6 +1885,7 @@ let enum_value_use :=
   | option(enum_value_opt); ~ = T_IDENTIFIER; <>
 
 let variable_access :=
+  | dv = T_DIR_VAR; { mk_var_use_dir dv }
   | ~ = variable_expr; <>
   | ~ = variable_expr; multibit_part_access; <>
   (* Non-standard extension to handle IF ARR1[i] < 10 THEN *)
