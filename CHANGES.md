@@ -42,6 +42,7 @@
 - Parser: Preserve literal types; add bit string literals (#66, @cangkui)
 - Add `PLCOpen-N1` (#68, @cangkui)
 - Add `PLCOpen-CP12` (#45)
+- Add `PLCOpen-CP20` (#49)
 
 ## 0.4.0 (2022-02-26)
 
