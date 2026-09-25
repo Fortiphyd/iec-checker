@@ -91,7 +91,7 @@ let std_summary = function
 (* }}} *)
 
 type env = {
-  globals : S.DirVar.t String.Map.t; (** Located global variables *)
+  globals : S.VarDecl.t String.Map.t; (** Located global variables *)
   fbs : S.fb_decl String.Map.t;
   funcs : S.function_decl String.Map.t;
   summaries : summary option String.Table.t;
@@ -105,9 +105,12 @@ type ctx = {
   arrays : String.Set.t;
   (** The parser drops indexes when reading array elements, so every access to
       these is treated as an element access. *)
+  unsigned : String.Set.t; (** Variables of unsigned types, which are >= 0 *)
   instances : string String.Map.t; (** Function block instance -> type *)
   findings : finding String.Table.t; (** Keyed by position of the sink *)
   returns : state ref; (** Join of the states at RETURN statements *)
+  exits : state ref; (** ... at EXIT statements of the innermost loop *)
+  continues : state ref; (** ... at CONTINUE statements of the innermost loop *)
 }
 
 (** Variable taints on the current path; [None] if the path is unreachable. *)
@@ -149,13 +152,16 @@ type var_ref = {
   partial : bool; (** Array element or struct member *)
   untrusted : bool;
   output : bool;
+  unsigned : bool;
 }
 
 let resolve ctx v =
   match S.VarUse.get_loc v with
   | S.VarUse.DirVar dv ->
+    (* Directly represented variables are bit strings (BYTE, WORD, ...). *)
     { name = S.DirVar.get_name dv; partial = false;
-      untrusted = is_untrusted_dir dv; output = is_output_dir dv }
+      untrusted = is_untrusted_dir dv; output = is_output_dir dv;
+      unsigned = not (is_bit dv) }
   | S.VarUse.SymVar sv ->
     let full = S.VarUse.get_name v in
     let indexed = Set.mem ctx.arrays full
@@ -169,13 +175,15 @@ let resolve ctx v =
         | None -> rest, false
       in
       { name = inst ^ "." ^ member; partial = nested || indexed;
-        untrusted = false; output = false }
+        untrusted = false; output = false; unsigned = false }
     | Some (base, _) ->
       { name = base; partial = true;
-        untrusted = Set.mem ctx.sources base; output = Set.mem ctx.sinks base }
+        untrusted = Set.mem ctx.sources base; output = Set.mem ctx.sinks base;
+        unsigned = false }
     | None ->
       { name = full; partial = indexed;
-        untrusted = Set.mem ctx.sources full; output = Set.mem ctx.sinks full }
+        untrusted = Set.mem ctx.sources full; output = Set.mem ctx.sinks full;
+        unsigned = Set.mem ctx.unsigned full }
 (* }}} *)
 
 (* Set once the summary machinery is defined below. *)
@@ -215,9 +223,13 @@ let max_of ts =
               lo = List.exists ts ~f:bounded_below;
               hi = List.for_all ts ~f:bounded_above }
 
+let with_type_bound r t =
+  if r.unsigned then normalize { t with lo = true } else t
+
 let read ctx m r =
-  if r.untrusted then Option.value (Map.find m r.name) ~default:(raw r.name)
-  else lookup ctx m r.name
+  with_type_bound r
+    (if r.untrusted then Option.value (Map.find m r.name) ~default:(raw r.name)
+     else lookup ctx m r.name)
 
 let rec eval ctx m = function
   | S.ExprConstant _ -> clean
@@ -339,11 +351,21 @@ let refine_stmt ctx st cond holds =
   match cond with
   | S.StmExpr (_, e) -> refine ctx st e holds
   | _ -> st
+
+(** A CASE branch whose labels are all constants bounds the selector. *)
+let refine_case ctx m sel_stmt (sel : S.case_selection) : state =
+  let is_const = function S.StmExpr (_, S.ExprConstant _) -> true | _ -> false in
+  match sel_stmt with
+  | S.StmExpr (_, S.ExprVariable (_, v))
+    when not (List.is_empty sel.case) && List.for_all sel.case ~f:is_const ->
+    Some (bound_var ctx m v S.EQ true)
+  | _ -> Some m
 (* }}} *)
 
 (* {{{ Statements *)
 let assign ctx m lhs t =
   let r = resolve ctx lhs in
+  let t = with_type_bound r t in
   if r.output && not (is_clean t) then
     record ctx { at = S.VarUse.get_ti lhs; sink = r.name; tainted_by = t.srcs;
                  calls = Int.Set.empty };
@@ -415,14 +437,21 @@ let rec walk ctx (st : state) stmt : state =
               (refine_stmt ctx rest c false, join_state ctx taken out))
         in
         join_state ctx taken (walk_list ctx rest els)
-      | S.StmCase (_, _, sels, els) ->
+      | S.StmCase (_, sel_stmt, sels, els) ->
         List.fold sels ~init:(walk_list ctx st els)
-          ~f:(fun acc (sel : S.case_selection) -> join_state ctx acc (walk_list ctx st sel.body))
-      | S.StmFor (_, ctrl, body) -> loop ctx (walk ctx st ctrl.assign) body
-      | S.StmWhile (_, _, body) -> loop ctx st body
-      | S.StmRepeat (_, body, _) -> loop ctx (walk_list ctx st body) body
+          ~f:(fun acc (sel : S.case_selection) ->
+              join_state ctx acc (walk_list ctx (refine_case ctx m sel_stmt sel) sel.body))
+      | S.StmFor (_, ctrl, body) -> loop ctx ~test_first:true (walk ctx st ctrl.assign) body
+      | S.StmWhile (_, cond, body) -> loop ctx ~cond:(cond, true) ~test_first:true st body
+      | S.StmRepeat (_, body, cond) -> loop ctx ~cond:(cond, false) ~test_first:false st body
       | S.StmReturn _ ->
         ctx.returns := join_state ctx !(ctx.returns) st;
+        None
+      | S.StmExit _ ->
+        ctx.exits := join_state ctx !(ctx.exits) st;
+        None
+      | S.StmContinue _ ->
+        ctx.continues := join_state ctx !(ctx.continues) st;
         None
       | S.StmFuncCall (ti, f, actuals) -> begin
           let name = S.Function.get_name f in
@@ -442,14 +471,34 @@ let rec walk ctx (st : state) stmt : state =
               | None -> Some (call_unknown ctx m name actuals)
             end
         end
-      | S.StmExpr _ | S.StmElsif _ | S.StmEmpty _ | S.StmExit _ | S.StmContinue _ -> st
+      | S.StmExpr _ | S.StmElsif _ | S.StmEmpty _ -> st
     end
 
 and walk_list ctx st stmts = List.fold stmts ~init:st ~f:(walk ctx)
 
-and loop ctx st body =
-  let next = join_state ctx st (walk_list ctx st body) in
-  if state_equal next st then st else loop ctx next body
+(** Walk a loop to a fixpoint and return the state after it. The body runs
+    while [cond] evaluates to the given value; [test_first] is false for
+    REPEAT, whose body runs before the first test. *)
+and loop ctx ?cond ~test_first st body =
+  let outer_exits = !(ctx.exits) and outer_continues = !(ctx.continues) in
+  ctx.exits := None;
+  ctx.continues := None;
+  let refine_cond st holds =
+    match cond with
+    | Some (c, runs) -> refine_stmt ctx st c (Bool.equal holds runs)
+    | None -> st
+  in
+  (* State at the loop test, after the body and at CONTINUE statements. *)
+  let run st = join_state ctx (walk_list ctx st body) !(ctx.continues) in
+  let rec fix st =
+    let next = join_state ctx st (run (refine_cond st true)) in
+    if state_equal next st then st else fix next
+  in
+  let at_test = fix (if test_first then st else run st) in
+  let after = join_state ctx (refine_cond at_test false) !(ctx.exits) in
+  ctx.exits := outer_exits;
+  ctx.continues := outer_continues;
+  after
 (* }}} *)
 
 (* {{{ POUs *)
@@ -475,9 +524,19 @@ let pou_of_elem = function
   | _ -> None
 
 let located_decls decls =
-  List.filter_map decls ~f:(fun d ->
-      Option.map (S.VarDecl.get_located_at d) ~f:(fun dv -> (S.VarDecl.get_var_name d, dv)))
+  List.filter decls ~f:(fun d -> Option.is_some (S.VarDecl.get_located_at d))
+  |> List.map ~f:(fun d -> (S.VarDecl.get_var_name d, d))
   |> String.Map.of_alist_reduce ~f:(fun first _ -> first)
+
+let is_unsigned d =
+  match S.VarDecl.get_ty_spec d with
+  | Some (S.DTyDeclSingleElement (S.DTySpecElementary ty, _)) -> begin
+      match ty with
+      | S.USINT | S.UINT | S.UDINT | S.ULINT
+      | S.BYTE | S.WORD | S.DWORD | S.LWORD -> true
+      | _ -> false
+    end
+  | _ -> false
 
 let is_global d =
   match S.VarDecl.get_attr d with Some (S.VarDecl.VarGlobal _) -> true | _ -> false
@@ -507,7 +566,10 @@ let mk_ctx env decls findings =
       (located_decls decls)
       ~combine:(fun ~key:_ _ local -> local)
   in
-  let located_where f = Map.filter located ~f |> Map.keys |> String.Set.of_list in
+  let located_where f =
+    Map.filter located ~f:(fun d -> Option.exists (S.VarDecl.get_located_at d) ~f)
+    |> Map.keys |> String.Set.of_list
+  in
   let typed f =
     List.filter_map decls ~f:(fun d ->
         Option.bind (S.VarDecl.get_ty_spec d) ~f:(f (S.VarDecl.get_var_name d)))
@@ -520,12 +582,18 @@ let mk_ctx env decls findings =
     arrays = String.Set.of_list (typed (fun name -> function
         | S.DTyDeclArrayType _ -> Some name
         | _ -> None));
+    unsigned = Map.data located @ decls
+               |> List.filter ~f:is_unsigned
+               |> List.map ~f:S.VarDecl.get_var_name
+               |> String.Set.of_list;
     instances = String.Map.of_alist_reduce ~f:(fun first _ -> first)
         (typed (fun name -> function
              | S.DTyDeclSingleElement (S.DTySpecSimple ty, _) when is_fb ty -> Some (name, ty)
              | _ -> None));
     findings;
     returns = ref None;
+    exits = ref None;
+    continues = ref None;
   }
 
 (** Walk the body of [pou] from [init] and return the state at its exit. *)

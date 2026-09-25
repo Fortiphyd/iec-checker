@@ -28,6 +28,9 @@ VAR
   drive  AT %QW0   : INT;   (* output *)
   drive2 AT %QW1   : INT;   (* output *)
   valve  AT %QX0.0 : BOOL;  (* BOOL output *)
+  u_sp   AT %MW102 : UINT;  (* unsigned network-writable setpoint *)
+  u_drive AT %QW3  : UINT;  (* unsigned output *)
+  u_tmp : UINT;
   tmp  : INT;
   tmp2 : INT;
   alarm : BOOL;
@@ -685,6 +688,135 @@ END_PROGRAM
 
 def test_value_from_previous_scan(tmp_path):
     check_body(tmp_path, f'drive := tmp; {MARKER}\ntmp := sp;')
+# }}}
+
+
+# {{{ CASE, unsigned types and loop conditions
+def test_case_range_bounds_selector(tmp_path):
+    check_body(tmp_path, 'CASE sp OF\n  0..1500: drive := sp;\nEND_CASE;')
+
+
+def test_case_values_bound_selector(tmp_path):
+    check_body(tmp_path, 'CASE sp OF\n  1, 2, 5: drive := sp;\nEND_CASE;')
+
+
+def test_case_else_is_not_bounded(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'CASE sp OF',
+        '  0..1500: drive := sp;',
+        'ELSE',
+        f'  drive := sp; {MARKER}',
+        'END_CASE;',
+    ]))
+
+
+def test_case_on_expression(tmp_path):
+    check_body(tmp_path, f'CASE sp + 1 OF\n  0..1500: drive := sp; {MARKER}\nEND_CASE;')
+
+
+def test_case_bound_does_not_extend_past_case(tmp_path):
+    check_body(tmp_path,
+               f'CASE sp OF\n  0..1500: tmp := 1;\nEND_CASE;\ndrive := sp; {MARKER}')
+
+
+def test_unsigned_source_with_min(tmp_path):
+    check_body(tmp_path, 'drive := MIN(u_sp, 1500);')
+
+
+def test_unsigned_source_alone(tmp_path):
+    check_body(tmp_path, f'drive := u_sp; {MARKER}')
+
+
+def test_unsigned_intermediate_with_min(tmp_path):
+    check_body(tmp_path, 'u_tmp := sp;\ndrive := MIN(u_tmp, 1500);')
+
+
+def test_unsigned_output_with_min(tmp_path):
+    check_body(tmp_path, 'u_drive := MIN(sp, 1500);')
+
+
+def test_direct_address_is_unsigned(tmp_path):
+    check_body(tmp_path, 'drive := MIN(%IW5, 1500);')
+
+
+def test_while_condition_bounds_after_loop(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'WHILE tmp > 1500 OR tmp < 0 DO',
+        '  tmp := tmp / 2;',
+        'END_WHILE;',
+        'drive := tmp;',
+    ]))
+
+
+def test_while_one_sided_condition(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'WHILE tmp > 1500 DO',
+        '  tmp := tmp / 2;',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_while_condition_bounds_body(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'WHILE sp >= 0 AND sp <= 1500 AND i < 10 DO',
+        '  drive := sp;',
+        '  i := i + 1;',
+        'END_WHILE;',
+    ]))
+
+
+def test_repeat_until_bounds_after_loop(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'REPEAT',
+        '  tmp := sp;',
+        'UNTIL tmp >= 0 AND tmp <= 1500',
+        'END_REPEAT;',
+        'drive := tmp;',
+    ]))
+
+
+def test_exit_skips_sanitizing(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'WHILE i < 10 DO',
+        '  i := i + 1;',
+        '  tmp := sp;',
+        '  IF alarm THEN',
+        '    EXIT;',
+        '  END_IF;',
+        '  tmp := LIMIT(0, tmp, 1500);',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_continue_skips_sanitizing(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'WHILE i < 10 DO',
+        '  i := i + 1;',
+        '  tmp := sp;',
+        '  IF alarm THEN',
+        '    CONTINUE;',
+        '  END_IF;',
+        '  tmp := LIMIT(0, tmp, 1500);',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_exit_skips_loop_condition(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'WHILE tmp > 1500 OR tmp < 0 DO',
+        '  IF alarm THEN',
+        '    EXIT;',
+        '  END_IF;',
+        '  tmp := tmp / 2;',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
 # }}}
 
 
