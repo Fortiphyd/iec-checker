@@ -45,6 +45,8 @@ let registered_detectors : Detector.t list = [
   Plcopen_n8.detector;
   Plcopen_n9.detector;
   Plcopen_n10.detector;
+  Narrowing_assignment.detector;
+  Mixed_type_arithmetic.detector;
 ]
 
 let detector_enabled (cfg : IECCheckerCore.Config.t) (d : Detector.t) =
