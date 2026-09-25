@@ -33,3 +33,23 @@ def test_use_define_array():
     with DumpManager(fdump) as dm:
         scheme = dm.scheme
         assert scheme
+
+
+def test_use_define_array_nested():
+    fdump = f'stdin.dump.json'
+    warns, rc = check_program(
+        """
+        PROGRAM test_arr_nested
+          VAR
+            ARR1: ARRAY [1..2] OF INT;
+            c : BOOL;
+          END_VAR
+          IF c THEN
+            ARR1[3] := 1; (* error *)
+          END_IF;
+        END_PROGRAM
+        """.replace('\n', ''))
+    assert rc == 0
+    assert len(filter_warns(warns, 'OutOfBounds')) == 1
+    with DumpManager(fdump):
+        pass

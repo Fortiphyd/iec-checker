@@ -196,7 +196,8 @@ let filter_exprs ~f elem =
       | S.ExprUn (_,_,e) -> begin
           acc @ [e] @ (get_nested_exprs acc e)
         end
-      | S.ExprVariable _ | S.ExprConstant _ | S.ExprFuncCall _ -> acc
+      | S.ExprFuncCall (_, s) -> acc @ aux [] s
+      | S.ExprVariable _ | S.ExprConstant _ -> acc
     in
     let apply_filter (exprs : S.expr list) =
       List.filter exprs ~f
@@ -271,9 +272,9 @@ let filter_exprs ~f elem =
     | S.StmExit _ | S.StmContinue _ | S.StmReturn _ -> acc
     | S.StmEmpty _ -> acc
   in
-  let all_stmts = get_pou_stmts elem in
+  (* [aux] descends into nested statements and call arguments itself. *)
   List.fold_left
-    all_stmts
+    (get_top_stmts elem)
     ~init:[]
     ~f:(fun acc stmt -> acc @ (aux [] stmt))
 
