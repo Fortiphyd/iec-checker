@@ -156,8 +156,16 @@ let rec get_stmt_exprs stmt =
   | S.StmEmpty _ -> []
 
 let get_pou_exprs elem =
-  get_pou_stmts elem
-  |> List.fold_left ~init:[] ~f:(fun acc stmt -> acc @ (get_stmt_exprs stmt))
+  (* Statements are visited once from the top level: [get_stmt_exprs] already
+     descends into nested bodies. Arguments of function calls are added as
+     separate expressions. *)
+  let rec with_call_args e =
+    e :: List.concat_map (expr_to_stmts e)
+      ~f:(fun s -> List.concat_map (get_stmt_exprs s) ~f:with_call_args)
+  in
+  get_top_stmts elem
+  |> List.concat_map ~f:get_stmt_exprs
+  |> List.concat_map ~f:with_call_args
 
 let get_var_uses elem =
   let rec get_vars = function
@@ -165,10 +173,8 @@ let get_var_uses elem =
     | S.ExprConstant _ -> []
     | S.ExprBin (_, lhs, _, rhs) -> (get_vars lhs) @ (get_vars rhs)
     | S.ExprUn (_, _, e) -> get_vars e
-    | S.ExprFuncCall (_, stmt) -> begin
-        get_stmt_exprs stmt
-        |> List.fold_left ~init:[] ~f:(fun acc e -> acc @ (get_vars e))
-      end
+    (* Call arguments are returned separately by [get_pou_exprs]. *)
+    | S.ExprFuncCall _ -> []
   in
   get_pou_exprs elem
   |> List.fold_left ~init:[] ~f:(fun acc expr -> acc @ (get_vars expr))

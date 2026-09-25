@@ -49,6 +49,25 @@ def test_cp8():
         pass
 
 
+def test_no_duplicate_warnings_in_nested_statements():
+    """Expressions nested in statement bodies and function arguments are
+    reported once."""
+    f = 'st/nested-exprs.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    ids = ('PLCOPEN-CP8', 'PLCOPEN-CP28', 'PLCOPEN-N1')
+    actual = Counter((w.id, w.linenr) for w in warns if w.id in ids)
+    assert actual == Counter({
+        ('PLCOPEN-CP8', 9): 1,
+        ('PLCOPEN-CP28', 12): 1,
+        ('PLCOPEN-N1', 15): 1,
+        ('PLCOPEN-N1', 17): 1,
+    })
+
+
 def test_cp28():
     f = 'st/plcopen-cp28.st'
     fdump = f'{f}.dump.json'
