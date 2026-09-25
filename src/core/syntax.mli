@@ -98,7 +98,7 @@ module DirVar : sig
   include ID
 
   (** Location prefixes for directly represented variables.
-      See 6.5.5.2 for explainations. *)
+      See 6.5.5.2 for explanations. *)
   type location = LocI | LocQ | LocM
   [@@deriving to_yojson]
 
@@ -244,7 +244,7 @@ and generic_ty =
   | ANY_DATE
 [@@deriving to_yojson]
 
-(** "Use" occurence of the derived type. *)
+(** "Use" occurrence of the derived type. *)
 and derived_ty =
   | DTyUseSingleElement of single_element_ty_spec [@name "UseSingleElement"]
   | DTyUseStructType of string                    [@name "UseStructElement"]
@@ -331,9 +331,10 @@ and ref_value =
 [@@deriving to_yojson]
 
 and constant =
-  | CInteger of TI.t * int           [@name "Integer"]
+  | CInteger of TI.t * elementary_ty option * int    [@name "Integer"]
+  | CReal of TI.t * elementary_ty option * float     [@name "Real"]
+  | CBitString of TI.t * elementary_ty option * int  [@name "BitString"]
   | CBool of TI.t * bool             [@name "Bool"]
-  | CReal of TI.t * float            [@name "Real"]
   | CString of TI.t * string         [@name "String"]
   | CPointer of TI.t * ref_value     [@name "Pointer"]
   | CTimeValue of TI.t * TimeValue.t [@name "TimeValue"]
@@ -373,6 +374,8 @@ and statement =
                  statement list * (** body *)
                  statement (** condition *)
                  [@name "Repeat"]
+  | StmEmpty of TI.t
+               [@name "Empty"]
   | StmExit of TI.t
                [@name "Exit"]
   | StmContinue of TI.t
@@ -440,6 +443,12 @@ val c_from_expr_exn : expr -> constant
 (* {{{ Elementary type helpers *)
 val ety_is_integer : elementary_ty -> bool
 val ety_is_string : elementary_ty -> bool
+val ety_to_string : elementary_ty -> string
+(** Printable IEC 61131-3 name of an elementary type (e.g. [INT -> "INT"]).
+    Length arguments on string-family types are dropped. *)
+
+val dty_decl_spec_kind_to_string : derived_ty_decl_spec -> string
+(** Printable kind of a derived-type declaration. *)
 (* }}} *)
 
 (* {{{ Configuration objects *)
@@ -486,8 +495,20 @@ module ProgramConfig : sig
   val set_conn_vars : t -> VarUse.t list -> t
   (** Set connected variables. *)
 
+  val set_type_name : t -> string -> t
+  (** Set POU type name referenced in configuration. *)
+
   val get_name : t -> string
   (** Get name of a program. *)
+
+  val get_type_name : t -> string option
+  (** Get POU type name referenced in configuration. *)
+
+  val get_ti : t -> TI.t
+  (** Get token info. *)
+
+  val get_task : t -> Task.t option
+  (** Get task configuration. *)
 
   val to_yojson : t -> Yojson.Safe.t
 end

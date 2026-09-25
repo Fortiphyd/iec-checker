@@ -106,7 +106,7 @@ module SymVar = struct
     name : string;
     ti : TI.t;
     array_indexes: int option list;
-  } [@@deriving to_yojson]
+  } [@@deriving to_yojson, show]
 
   let create name ti =
     let array_indexes = [] in
@@ -126,7 +126,7 @@ end
 
 module DirVar = struct
   type location = LocI | LocQ | LocM
-  [@@deriving to_yojson]
+  [@@deriving to_yojson, show]
 
   type size =
     | SizeX    (** single bit *)
@@ -135,7 +135,7 @@ module DirVar = struct
     | SizeW    (** word (16 bits) *)
     | SizeD    (** double word (32 bits) *)
     | SizeL    (** quad word (64 bits) *)
-  [@@deriving to_yojson]
+  [@@deriving to_yojson, show]
 
   let path_to_string path =
     List.fold_left path
@@ -148,7 +148,7 @@ module DirVar = struct
     sz: size option;
     is_partly_located: bool; (** ExprVariable is defined using '*' symbol *)
     path: int list;
-  } [@@deriving to_yojson]
+  } [@@deriving to_yojson, show]
 
   let create ti =
     let loc = None in
@@ -296,12 +296,12 @@ module VarUse = struct
   type loc_type =
     | SymVar of SymVar.t
     | DirVar of DirVar.t
-  [@@deriving to_yojson]
+  [@@deriving to_yojson, show]
 
   type t = {
     loc: loc_type;
     ty: var_type;
-  } [@@deriving to_yojson]
+  } [@@deriving to_yojson, show]
 
   let create_sym sym_var ty =
     let loc = SymVar(sym_var) in
@@ -463,9 +463,10 @@ and ref_value =
 [@@deriving to_yojson]
 
 and constant =
-  | CInteger of TI.t * int           [@name "Integer"]
+  | CInteger of TI.t * elementary_ty option * int    [@name "Integer"]
+  | CReal of TI.t * elementary_ty option * float     [@name "Real"]
+  | CBitString of TI.t * elementary_ty option * int  [@name "BitString"]
   | CBool of TI.t * bool             [@name "Bool"]
-  | CReal of TI.t * float            [@name "Real"]
   | CString of TI.t * string         [@name "String"]
   | CPointer of TI.t * ref_value     [@name "Pointer"]
   | CTimeValue of TI.t * TimeValue.t [@name "TimeValue"]
@@ -505,6 +506,8 @@ and statement =
                  statement list * (** body *)
                  statement (** condition *)
                  [@name "Repeat"]
+  | StmEmpty of TI.t
+               [@name "Empty"]
   | StmExit of TI.t
                [@name "Exit"]
   | StmContinue of TI.t
@@ -546,6 +549,7 @@ let stmt_get_ti = function
   | StmFor (ti,_,_) -> ti
   | StmWhile (ti,_,_) -> ti
   | StmRepeat (ti,_,_) -> ti
+  | StmEmpty (ti) -> ti
   | StmExit (ti) -> ti
   | StmContinue (ti) -> ti
   | StmReturn (ti) -> ti
@@ -563,6 +567,7 @@ let stmt_to_string = function
   | StmFor _ -> "For"
   | StmWhile _ -> "While"
   | StmRepeat _ -> "Repeat"
+  | StmEmpty _ -> "Empty"
   | StmExit _ -> "Exit"
   | StmContinue _ -> "Continue"
   | StmReturn _ -> "Return"
@@ -585,9 +590,10 @@ let expr_get_id e =
 (* {{{ Functions to work with constants *)
 let c_is_zero c =
   match c with
-  | CInteger (_, v) -> phys_equal v 0
+  | CInteger (_, _, v) -> phys_equal v 0
+  | CBitString (_, _, v) -> phys_equal v 0
   | CBool (_, v) -> phys_equal v false
-  | CReal (_, v) -> phys_equal v 0.0
+  | CReal (_, _, v) -> phys_equal v 0.0
   | CString _ -> false
   | CPointer (_, v) -> begin
       match v with
@@ -600,9 +606,10 @@ let c_is_zero c =
 
 let c_get_str_value c =
   match c with
-  | CInteger (_, v) -> string_of_int v
+  | CInteger (_, _, v) -> string_of_int v
+  | CBitString (_, _, v) -> string_of_int v
   | CBool (_, v) -> string_of_bool v
-  | CReal (_, v) -> string_of_float v
+  | CReal (_, _, v) -> string_of_float v
   | CString (_, v) -> v
   | CPointer (_, v) -> begin
       match v with
@@ -616,9 +623,10 @@ let c_get_str_value c =
 
 let c_get_ti c =
   match c with
-  | CInteger (ti, _) -> ti
+  | CInteger (ti, _, _) -> ti
+  | CBitString (ti, _, _) -> ti
   | CBool (ti, _) -> ti
-  | CReal (ti, _) -> ti
+  | CReal (ti, _, _) -> ti
   | CString (ti, _) -> ti
   | CPointer (ti, _) -> ti
   | CTimeValue (ti, _) -> ti
@@ -627,15 +635,18 @@ let c_get_ti c =
 
 let c_add c1 c2 =
   match (c1, c2) with
-  | CInteger (ti, v1), CInteger (_, v2) ->
+  | CInteger (ti, _, v1), CInteger (_, _, v2) ->
     let v = v1 + v2 in
-    CInteger (ti, v)
+    CInteger (ti, None, v)
+  | CBitString (ti, _, v1), CBitString (_, _, v2) ->
+    let v = v1 lor v2 in
+    CBitString (ti, None, v)
   | CBool (ti, v1), CBool (_, v2) ->
     let v = v1 || v2 in
     CBool (ti, v)
-  | CReal (ti, v1), CReal (_, v2) ->
+  | CReal (ti, _, v1), CReal (_, _, v2) ->
     let v = v1 +. v2 in
-    CReal (ti, v)
+    CReal (ti, None, v)
   | CString (ti, v1), CString (_, v2) ->
     let v = v1 ^ v2 in
     CString (ti, v)
@@ -661,6 +672,47 @@ let ety_is_integer = function
 let ety_is_string = function
   | STRING _ | WSTRING _ | CHAR _ | WCHAR _ -> true
   | _ -> false
+
+let ety_to_string = function
+  | NIL -> "NIL"
+  | STRING _ -> "STRING"
+  | WSTRING _ -> "WSTRING"
+  | CHAR _ -> "CHAR"
+  | WCHAR _ -> "WCHAR"
+  | TIME -> "TIME"
+  | LTIME -> "LTIME"
+  | SINT -> "SINT"
+  | INT -> "INT"
+  | DINT -> "DINT"
+  | LINT -> "LINT"
+  | USINT -> "USINT"
+  | UINT -> "UINT"
+  | UDINT -> "UDINT"
+  | ULINT -> "ULINT"
+  | REAL -> "REAL"
+  | LREAL -> "LREAL"
+  | DATE -> "DATE"
+  | LDATE -> "LDATE"
+  | TIME_OF_DAY -> "TIME_OF_DAY"
+  | TOD -> "TOD"
+  | LTOD -> "LTOD"
+  | DATE_AND_TIME -> "DATE_AND_TIME"
+  | LDATE_AND_TIME -> "LDATE_AND_TIME"
+  | DT -> "DT"
+  | LDT -> "LDT"
+  | BOOL -> "BOOL"
+  | BYTE -> "BYTE"
+  | WORD -> "WORD"
+  | DWORD -> "DWORD"
+  | LWORD -> "LWORD"
+
+let dty_decl_spec_kind_to_string = function
+  | DTyDeclStructType _ -> "STRUCT"
+  | DTyDeclEnumType _ -> "ENUM"
+  | DTyDeclArrayType _ -> "ARRAY"
+  | DTyDeclSubrange _ -> "SUBRANGE"
+  | DTyDeclRefType _ -> "REF"
+  | DTyDeclSingleElement _ -> "ALIAS"
 (* }}} *)
 
 (* {{{ Configuration objects *)
@@ -706,13 +758,15 @@ module ProgramConfig = struct
     qual : qualifier option;
     task : Task.t option;
     conn_vars : VarUse.t list; (** Variables connected to program data flow. *)
+    type_name : string option; (** POU type name referenced in configuration. *)
   } [@@deriving to_yojson]
 
   let create name ti =
     let qual = None in
     let task = None in
     let conn_vars = [] in
-    { name; ti; qual; task; conn_vars }
+    let type_name = None in
+    { name; ti; qual; task; conn_vars; type_name }
 
   let set_qualifier pc q = { pc with qual = Some q }
 
@@ -720,7 +774,15 @@ module ProgramConfig = struct
 
   let set_conn_vars pc conn_vars = { pc with conn_vars }
 
+  let set_type_name pc tn = { pc with type_name = Some tn }
+
   let get_name t = t.name
+
+  let get_type_name t = t.type_name
+
+  let get_ti t = t.ti
+
+  let get_task t = t.task
 
   let to_yojson t = to_yojson t
 end

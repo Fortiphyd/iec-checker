@@ -67,7 +67,7 @@ let rec get_stmt_exprs stmt =
       in
       (get_nested func_params_stmts)
     end
-  | S.StmExit _ | S.StmContinue _ | S.StmReturn _ -> 0
+  | S.StmExit _ | S.StmContinue _ | S.StmReturn _ | S.StmEmpty _ -> 0
 
 let check_pou elem =
   AU.get_pou_stmts elem

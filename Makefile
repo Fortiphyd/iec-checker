@@ -1,4 +1,4 @@
-.PHONY: build test clean
+.PHONY: build test doc spell clean
 
 default: build
 
@@ -7,10 +7,17 @@ build:
 	@test -L bin || ln -s _build/install/default/bin .
 
 test: build
-	@/bin/bash -c "source venv/bin/activate; \
+	@/bin/bash -c "[ -f venv/bin/activate ] && source venv/bin/activate; \
 				   pushd test >/dev/null; \
 				   pytest; \
 				   popd >/dev/null; "
+
+doc:
+	dune build @doc
+	@echo "Docs: _build/default/_doc/_html/index.html"
+
+spell:
+	codespell
 
 clean:
 	dune clean

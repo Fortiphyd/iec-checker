@@ -41,7 +41,7 @@ let check_pou pou env =
           match expr with
           | S.ExprBin (ti,(S.ExprVariable (_, lhs)),(S.EQ|S.NEQ|S.ASSIGN|S.ASSIGN_REF|S.GT|S.LT|S.GE|S.LE|S.SENDTO),(S.ExprVariable (_, rhs))) -> begin
               check_assign_expr ti lhs rhs env
-              |> Caml.Option.fold ~none:[] ~some:(fun w -> [w])
+              |> Option.to_list
               |> List.append acc
             end
           | _ -> acc
@@ -57,3 +57,12 @@ let do_check elems envs =
           in
           acc @ check_pou pou env
         end)
+
+let detector : Detector.t = {
+  id = "PLCOPEN-CP25";
+  name = "Data type conversion should be explicit";
+  summary =
+    "Implicit casts between integer and floating-point types are forbidden.";
+  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP25";
+  check = (fun (i : Detector.inputs) -> do_check i.elements i.envs);
+}

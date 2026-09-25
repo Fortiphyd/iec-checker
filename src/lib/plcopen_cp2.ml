@@ -18,7 +18,7 @@ let find_unreachable_blocks (cfgs : Cfg.t list) : (Warn.t list) =
 
     let reachable_set = IntSet.of_list (Cfg.get_reachable_ids cfg)
     and all_set = IntSet.of_list (Cfg.get_all_ids cfg) in
-    let unreachable_set = IntSet.diff all_set reachable_set in
+    let unreachable_set = Set.diff all_set reachable_set in
 
     Set.fold
       unreachable_set
@@ -39,3 +39,11 @@ let find_unreachable_blocks (cfgs : Cfg.t list) : (Warn.t list) =
 let do_check (cfgs : Cfg.t list) : Warn.t list =
   (* List.iter cfgs ~f:(fun c -> Printf.printf "%s\n" (Cfg.to_string c)); *)
   (find_unreachable_blocks cfgs)
+
+let detector : Detector.t = {
+  id = "PLCOPEN-CP2";
+  name = "All code shall be used in the application";
+  summary = "Unreachable code reflects a logic mistake and should be removed.";
+  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP2";
+  check = (fun (i : Detector.inputs) -> do_check i.cfgs);
+}

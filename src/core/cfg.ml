@@ -207,7 +207,7 @@ let fill_bbs_map (cfg : t) (stmts : S.statement list) : (unit) =
           let (first_bb_last_ids, first_bb_id) = (mk_nested_bbs stmt first_bb [first_bb.id])
           and stmts_tail = List.tl_exn stmts in
 
-          (* Link EXIT/CONTINUE statement properely. *)
+          (* Link EXIT/CONTINUE statement properly. *)
           let first_bb_last_ids = handle_exit_continue first_bb first_bb_last_ids stmt in
 
           (* FIXME: How to pass multiple arguments inside >>| monad? *)
@@ -241,7 +241,7 @@ let fill_bbs_map (cfg : t) (stmts : S.statement list) : (unit) =
                     let (upd_last_bb_ids, upd_previous_id_opt) =
                       mk_nested_bbs stmt bb acc_bb_last_ids
                     in
-                    (* Link EXIT/CONTINUE statement properely. *)
+                    (* Link EXIT/CONTINUE statement properly. *)
                     let upd_last_bb_ids  = handle_exit_continue bb upd_last_bb_ids stmt in
                     (upd_last_bb_ids, upd_previous_id_opt)
                   end)
@@ -283,6 +283,9 @@ let fill_bbs_map (cfg : t) (stmts : S.statement list) : (unit) =
           link_func_calls_stmts expr |> ignore;
           (bbs_pred_ids, Some(created_bb.id))
         end
+      | S.StmEmpty _ ->
+        (* Empty / no-op statement: nothing to process, keep current BB as previous *)
+        (bbs_pred_ids, Some(created_bb.id))
       | S.StmElsif (_, cond_stmt, body_stmts) ->
         begin
           (* Process [cond_stmt]. *)
@@ -591,15 +594,15 @@ let get_reachable_ids cfg =
     let visited = ref IntSet.empty in
     let rec dfs (bb_id : int) =
       let handle_node id =
-        if not (IntSet.mem !visited id) then dfs id
+        if not (Set.mem !visited id) then dfs id
       in
       let bb = (BBMap.find_exn cfg.bbs_map bb_id) in
-      visited := IntSet.add !visited bb_id;
+      visited := Set.add !visited bb_id;
       List.iter bb.succs ~f:(fun id -> handle_node id);
       ()
     in
     dfs cfg.entry_bb_id;
-    IntSet.to_list !visited
+    Set.to_list !visited
 
 let get_number_of_edges cfg =
   List.fold_left

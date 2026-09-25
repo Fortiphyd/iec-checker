@@ -4,17 +4,18 @@
 (generate_opam_files true)
 
 (name iec_checker)
-(version 0.0.4)
+(version 0.5.0)
 (authors "Georgiy Komarov")
 (license  LGPL-3.0-or-later)
 (source (github jubnzv/iec-checker))
+(documentation "https://iec-checker.github.io/")
 (maintainers "Georgiy Komarov <jubnzv@gmail.com>")
 
 (package
   (name iec_checker)
   (synopsis "Static analysis of IEC 61131-3 programs")
   (depends
-        (ocaml (>= 4.08))
+        (ocaml (>= 5.1))
         (core :build)
         (clap :build)
         (menhir (and :build (= 20210929)))

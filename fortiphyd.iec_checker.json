@@ -1,0 +1,6 @@
+{
+  "thresholds": {
+    "mccabe_complexity": 40,
+    "statements_count": 60
+  }
+}

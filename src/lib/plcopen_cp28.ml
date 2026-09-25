@@ -22,7 +22,7 @@ let check_elem elem =
               match operator with
               | NEG | EQ -> begin
                   if (is_time_or_phys lhs) || (is_time_or_phys rhs) then begin
-                    let msg = "Time and physical measures comparissons shall not be equality or inequality" in
+                    let msg = "Time and physical measures comparisons shall not be equality or inequality" in
                     acc @ [(Warn.mk ti.linenr ti.col "PLCOPEN-CP28" msg)]
                   end
                   else acc
@@ -37,3 +37,12 @@ let do_check elems =
     ~init:[]
     elems
     ~f:(fun acc elem -> acc @ (check_elem elem))
+
+let detector : Detector.t = {
+  id = "PLCOPEN-CP28";
+  name = "Time and physical measures comparisons shall not be equality or inequality";
+  summary =
+    "Use range comparisons instead of [=] / [<>] when comparing [TIME] values.";
+  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP28";
+  check = (fun (i : Detector.inputs) -> do_check i.elements);
+}

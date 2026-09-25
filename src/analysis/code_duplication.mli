@@ -1,4 +1,4 @@
-(** Detect unused variables in the source code. *)
+(** Hash statements of POUs to find duplicated code. Not wired into the driver yet. *)
 open IECCheckerCore
 module S = Syntax
 
