@@ -12,8 +12,6 @@ import sys
 import os
 import json
 
-import pytest
-
 sys.path.append(os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "../src"))
 from python.core import run_checker, filter_warns  # noqa
@@ -34,12 +32,9 @@ VAR
   tmp2 : INT;
   alarm : BOOL;
   i : INT;
+  arr : ARRAY [0..3] OF INT;
 END_VAR
 """
-
-pending = pytest.mark.xfail(
-    strict=True, reason='bounds from IF conditions not implemented yet')
-
 
 def run_taint(tmp_path, source, args=[]):
     """Run the checker on [source] and return its TaintedVariable warnings."""
@@ -148,6 +143,39 @@ def test_loop_carried(tmp_path):
     ]))
 
 
+def test_one_sided_if_guard(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp > 1500 THEN',
+        '  drive := 1500;',
+        'ELSE',
+        f'  drive := sp; {MARKER}',
+        'END_IF;',
+    ]))
+
+
+def test_if_guard_with_untrusted_bound(tmp_path):
+    check_body(tmp_path,
+               f'IF sp >= 0 AND sp <= sp_max THEN\n  drive := sp; {MARKER}\nEND_IF;')
+
+
+def test_if_guard_does_not_extend_past_if(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp >= 0 AND sp <= 1500 THEN',
+        '  tmp := 1;',
+        'END_IF;',
+        f'drive := sp; {MARKER}',
+    ]))
+
+
+def test_if_guard_on_array_element(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'arr[0] := sp;',
+        'IF arr[0] >= 0 AND arr[0] <= 1500 THEN',
+        f'  drive := arr[0]; {MARKER}',
+        'END_IF;',
+    ]))
+
+
 def test_in_function_block(tmp_path):
     check(tmp_path, f"""FUNCTION_BLOCK fb
 VAR
@@ -199,6 +227,37 @@ def test_named_limit(tmp_path):
     check_body(tmp_path, 'drive := LIMIT(MN := 0, IN := sp, MX := 1500);')
 
 
+def test_if_guard_in_else(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp < 0 OR sp > 1500 THEN',
+        '  drive := 0;',
+        'ELSE',
+        '  drive := sp;',
+        'END_IF;',
+    ]))
+
+
+def test_if_guard_reversed_operands(tmp_path):
+    check_body(tmp_path, 'IF 0 <= sp AND 1500 >= sp THEN\n  drive := sp;\nEND_IF;')
+
+
+def test_if_guard_with_not(tmp_path):
+    check_body(tmp_path,
+               'IF NOT (sp < 0) AND NOT (sp > 1500) THEN\n  drive := sp;\nEND_IF;')
+
+
+def test_early_return_guards(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp < 0 THEN',
+        '  RETURN;',
+        'END_IF;',
+        'IF sp > 1500 THEN',
+        '  RETURN;',
+        'END_IF;',
+        'drive := sp;',
+    ]))
+
+
 def test_untrusted_to_non_output(tmp_path):
     check_body(tmp_path, 'tmp := sp;')
 
@@ -219,12 +278,10 @@ def test_sanitized_intermediate(tmp_path):
     check_body(tmp_path, 'tmp := LIMIT(0, sp, 1500);\ndrive := tmp;')
 
 
-@pending
 def test_if_range_guard(tmp_path):
     check_body(tmp_path, 'IF sp >= 0 AND sp <= 1500 THEN\n  drive := sp;\nEND_IF;')
 
 
-@pending
 def test_if_clamp(tmp_path):
     check_body(tmp_path, '\n'.join([
         'tmp := sp;',

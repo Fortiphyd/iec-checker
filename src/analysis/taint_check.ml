@@ -41,6 +41,9 @@ let unbounded ts =
 type ctx = {
   sources : String.Set.t; (** Variables declared at %I or %M *)
   sinks : String.Set.t; (** Variables declared at %Q *)
+  arrays : String.Set.t;
+  (** The parser drops indexes when reading array elements, so every access to
+      these is treated as an element access. *)
   findings : (TI.t * string * String.Set.t) String.Table.t;
   (** Keyed by position of the sink assignment *)
 }
@@ -105,7 +108,8 @@ let resolve ctx v =
       | None -> full, false
     in
     { name;
-      partial = member || not (List.is_empty (S.SymVar.get_array_indexes sv));
+      partial = member || Set.mem ctx.arrays name
+                || not (List.is_empty (S.SymVar.get_array_indexes sv));
       untrusted = Set.mem ctx.sources name;
       output = Set.mem ctx.sinks name }
 (* }}} *)
@@ -130,12 +134,13 @@ let max_of ts =
               lo = List.exists ts ~f:bounded_below;
               hi = List.for_all ts ~f:bounded_above }
 
+let read ctx m r =
+  if r.untrusted then Option.value (Map.find m r.name) ~default:(raw r.name)
+  else lookup ctx m r.name
+
 let rec eval ctx m = function
   | S.ExprConstant _ -> clean
-  | S.ExprVariable (_, v) ->
-    let r = resolve ctx v in
-    if r.untrusted then Option.value (Map.find m r.name) ~default:(raw r.name)
-    else lookup ctx m r.name
+  | S.ExprVariable (_, v) -> read ctx m (resolve ctx v)
   (* Comparisons yield BOOL, which isn't tracked. *)
   | S.ExprBin (_, _, (S.GT | S.LT | S.GE | S.LE | S.EQ | S.NEQ), _) -> clean
   | S.ExprBin (_, l, _, r) -> unbounded [eval ctx m l; eval ctx m r]
@@ -168,6 +173,56 @@ and call ctx m fname params =
   | _ -> unbounded ts
 (* }}} *)
 
+(* {{{ Conditions *)
+let flip = function
+  | S.GT -> S.LT
+  | S.LT -> S.GT
+  | S.GE -> S.LE
+  | S.LE -> S.GE
+  | op -> op
+
+(** Bound [v] by the fact that [v op bound] is [holds], for a trusted bound. *)
+let bound_var ctx m v op holds =
+  let lower, upper =
+    match op, holds with
+    | (S.GT | S.GE), true | (S.LT | S.LE), false -> true, false
+    | (S.LT | S.LE), true | (S.GT | S.GE), false -> false, true
+    | S.EQ, true | S.NEQ, false -> true, true
+    | _ -> false, false
+  in
+  let r = resolve ctx v in
+  let t = read ctx m r in
+  (* A bound on one element doesn't bound the whole array or struct. *)
+  if r.partial || is_clean t || not (lower || upper) then m
+  else Map.set m ~key:r.name
+      ~data:(normalize { t with lo = t.lo || lower; hi = t.hi || upper })
+
+(** Refine [st] with the bounds implied by [cond] evaluating to [holds]. *)
+let rec refine ctx (st : state) cond holds : state =
+  match st with
+  | None -> None
+  | Some m -> begin
+      match cond with
+      | S.ExprUn (_, S.NEG, e) -> refine ctx st e (not holds)
+      | S.ExprBin (_, l, S.AND, r) when holds -> refine ctx (refine ctx st l true) r true
+      | S.ExprBin (_, l, S.OR, r) when not holds -> refine ctx (refine ctx st l false) r false
+      | S.ExprBin (_, l, S.AND, r) ->
+        join_state ctx (refine ctx st l false) (refine ctx st r false)
+      | S.ExprBin (_, l, S.OR, r) ->
+        join_state ctx (refine ctx st l true) (refine ctx st r true)
+      | S.ExprBin (_, S.ExprVariable (_, v), op, bound) when is_clean (eval ctx m bound) ->
+        Some (bound_var ctx m v op holds)
+      | S.ExprBin (_, bound, op, S.ExprVariable (_, v)) when is_clean (eval ctx m bound) ->
+        Some (bound_var ctx m v (flip op) holds)
+      | _ -> st
+    end
+
+let refine_stmt ctx st cond holds =
+  match cond with
+  | S.StmExpr (_, e) -> refine ctx st e holds
+  | _ -> st
+(* }}} *)
+
 (* {{{ Statements *)
 let record ctx lhs r t =
   let ti = S.VarUse.get_ti lhs in
@@ -191,14 +246,20 @@ let rec walk ctx (st : state) stmt : state =
       match stmt with
       | S.StmExpr (_, S.ExprBin (_, S.ExprVariable (_, lhs), (S.ASSIGN | S.ASSIGN_REF), rhs)) ->
         Some (assign ctx m lhs (eval ctx m rhs))
-      | S.StmIf (_, _, body, elsifs, els) ->
-        let bodies =
-          body :: List.filter_map elsifs ~f:(function
-              | S.StmElsif (_, _, b) -> Some b
+      | S.StmIf (_, cond, body, elsifs, els) ->
+        let branches =
+          (cond, body) :: List.filter_map elsifs ~f:(function
+              | S.StmElsif (_, c, b) -> Some (c, b)
               | _ -> None)
         in
-        List.fold bodies ~init:(walk_list ctx st els)
-          ~f:(fun acc b -> join_state ctx acc (walk_list ctx st b))
+        (* Each branch is taken when its condition holds and all previous
+           ones don't; ELSE when none of them hold. *)
+        let rest, taken =
+          List.fold branches ~init:(st, None) ~f:(fun (rest, taken) (c, b) ->
+              let out = walk_list ctx (refine_stmt ctx rest c true) b in
+              (refine_stmt ctx rest c false, join_state ctx taken out))
+        in
+        join_state ctx taken (walk_list ctx rest els)
       | S.StmCase (_, _, sels, els) ->
         List.fold sels ~init:(walk_list ctx st els)
           ~f:(fun acc (sel : S.case_selection) -> join_state ctx acc (walk_list ctx st sel.body))
@@ -219,16 +280,22 @@ and loop ctx st body =
 (* }}} *)
 
 let check_pou elem =
-  let sources, sinks =
-    AU.get_var_decls elem
-    |> List.fold ~init:(String.Set.empty, String.Set.empty) ~f:(fun (srcs, sinks) d ->
-        let name = S.VarDecl.get_var_name d in
-        match S.VarDecl.get_located_at d with
-        | Some dv when is_untrusted_dir dv -> (Set.add srcs name, sinks)
-        | Some dv when is_output_dir dv -> (srcs, Set.add sinks name)
-        | _ -> (srcs, sinks))
+  let decls = AU.get_var_decls elem in
+  let names_where f =
+    List.filter_map decls ~f:(fun d ->
+        if f d then Some (S.VarDecl.get_var_name d) else None)
+    |> String.Set.of_list
   in
-  let ctx = { sources; sinks; findings = String.Table.create () } in
+  let located f d = Option.value_map (S.VarDecl.get_located_at d) ~default:false ~f in
+  let ctx = {
+    sources = names_where (located is_untrusted_dir);
+    sinks = names_where (located is_output_dir);
+    arrays = names_where (fun d ->
+        match S.VarDecl.get_ty_spec d with
+        | Some (S.DTyDeclArrayType _) -> true
+        | _ -> false);
+    findings = String.Table.create ();
+  } in
   ignore (walk_list ctx (Some String.Map.empty) (AU.get_top_stmts elem) : state);
   Hashtbl.data ctx.findings
   |> List.sort ~compare:(fun ((a : TI.t), _, _) ((b : TI.t), _, _) ->
