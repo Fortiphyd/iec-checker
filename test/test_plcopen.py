@@ -14,7 +14,7 @@ def test_cp1():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP1') == 1
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP1')) == 1
     with DumpManager(fdump):
         pass
 
@@ -24,7 +24,7 @@ def test_cp3():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP3') == 8
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP3')) == 3
     with DumpManager(fdump):
         pass
 
@@ -34,9 +34,21 @@ def test_cp6():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP6') == 2
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP6')) == 3
     with DumpManager(fdump):
         pass
+
+
+def test_cp4():
+    f = 'st/plcopen-cp4.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN-CP4' in line]
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-CP4')) == expected
 
 
 def test_cp8():
@@ -44,7 +56,7 @@ def test_cp8():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP8') == 4
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP8')) == 4
     with DumpManager(fdump):
         pass
 
@@ -73,7 +85,7 @@ def test_cp28():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP28') == 4
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP28')) == 4
     with DumpManager(fdump):
         pass
 
@@ -83,7 +95,7 @@ def test_cp13():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP13') == 3
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP13')) == 1
     with DumpManager(fdump):
         pass
 
@@ -93,7 +105,7 @@ def test_cp25():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP25') == 2
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP25')) == 2
     with DumpManager(fdump):
         pass
 
@@ -103,7 +115,7 @@ def test_l10():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-L10') == 3
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-L10')) == 3
     with DumpManager(fdump):
         pass
 
