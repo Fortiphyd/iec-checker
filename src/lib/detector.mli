@@ -30,6 +30,8 @@ type t = {
   doc_url : string;
     (** Canonical URL of the detector's long-form documentation page on the
         published doc site. *)
+  severity : Warn.severity;
+    (** Severity of the warnings reported by this detector. *)
   check : inputs -> Warn.t list;
     (** The analysis function. Receives the full {!inputs} record so that
         every detector has the same shape; each detector reads only the

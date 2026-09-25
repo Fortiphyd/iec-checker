@@ -114,5 +114,6 @@ let detector : Detector.t = {
     "Writing the same output twice in one cycle makes its value depend on \
      statement order.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP12";
+  severity = IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

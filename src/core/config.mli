@@ -14,6 +14,7 @@ type t = {
   (** Minimum size of duplicated code to report, in syntax tree nodes *)
   output_format      : string;
   use_color          : bool;
+  min_severity       : string; (** Hide warnings below: "low", "medium" or "high" *)
   input_format       : string;
   merge              : bool;
   exclude_paths      : string list;

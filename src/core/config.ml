@@ -14,6 +14,7 @@ type t = {
   duplicate_code_size : int;
   output_format      : string;
   use_color          : bool;
+  min_severity       : string;
   input_format       : string;
   merge              : bool;
   exclude_paths      : string list;
@@ -38,6 +39,7 @@ let default = {
   duplicate_code_size = 25;
   output_format      = "plain";
   use_color          = true;
+  min_severity       = "low";
   input_format       = "st";
   merge              = false;
   exclude_paths      = [];
@@ -129,6 +131,7 @@ let of_yojson (json : Yojson.Safe.t) : (t, string) result =
       duplicate_code_size = int_field thresholds "duplicate_code_size" ~default:default.duplicate_code_size;
       output_format      = string_field output "format"    ~default:default.output_format;
       use_color          = bool_field   output "color"     ~default:default.use_color;
+      min_severity       = string_field output "min_severity" ~default:default.min_severity;
       input_format       = string_field input  "format"    ~default:default.input_format;
       merge              = bool_field   input  "merge"     ~default:default.merge;
       exclude_paths      = string_list_field input "exclude_paths" ~default:default.exclude_paths;
@@ -167,6 +170,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
     "output", `Assoc [
       "format", `String c.output_format;
       "color",  `Bool   c.use_color;
+      "min_severity", `String c.min_severity;
     ];
     "input", `Assoc [
       "format",        `String c.input_format;

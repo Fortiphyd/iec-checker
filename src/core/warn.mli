@@ -4,6 +4,15 @@ type warn_ty =
   | InternalError
 [@@deriving yojson]
 
+(** How likely a warning points at a real problem. *)
+type severity = Low | Medium | High
+
+val severity_to_string : severity -> string
+val severity_of_string : string -> severity option
+
+val severity_rank : severity -> int
+(** [severity_rank] orders severities from [Low] to [High]. *)
+
 type t = {
   linenr: int;
   column: int;
@@ -12,9 +21,10 @@ type t = {
   msg: string;
   context: string;
   ty: warn_ty [@key "type"];
+  severity: severity;
 } [@@deriving yojson]
 
-val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> int -> int -> string -> string -> t
+val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> int -> int -> string -> string -> t
 val mk_internal : ?id:(string) -> string -> t
 val mk_from_lexbuf : ?context:(string) -> Lexing.lexbuf -> string -> string -> t
 

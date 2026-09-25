@@ -44,5 +44,6 @@ let detector : Detector.t = {
     "Variable names should start with a configurable type-based prefix \
      (Hungarian notation).";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N2";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

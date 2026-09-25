@@ -67,5 +67,6 @@ let detector : Detector.t = {
   summary =
     "Direct addressing should not be used when a symbolic name exists.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP1";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

@@ -3,6 +3,31 @@ type warn_ty =
   | InternalError
 [@@deriving yojson]
 
+type severity = Low | Medium | High
+
+let severity_to_string = function
+  | Low -> "low"
+  | Medium -> "medium"
+  | High -> "high"
+
+let severity_of_string = function
+  | "low" -> Some Low
+  | "medium" -> Some Medium
+  | "high" -> Some High
+  | _ -> None
+
+let severity_rank = function Low -> 0 | Medium -> 1 | High -> 2
+
+let severity_to_yojson s = `String (severity_to_string s)
+
+let severity_of_yojson = function
+  | `String s -> begin
+      match severity_of_string s with
+      | Some s -> Ok s
+      | None -> Error ("unknown severity: " ^ s)
+    end
+  | _ -> Error "severity must be a string"
+
 type t = {
   linenr: int;
   column: int;
@@ -11,10 +36,11 @@ type t = {
   msg: string;
   context: string;
   ty: warn_ty [@key "type"];
+  severity: severity;
 } [@@deriving yojson]
 
-let mk ?(ty=Inspection) ?(file="") ?(context="") linenr column id msg =
-  { linenr; column; file; id; msg; context; ty }
+let mk ?(ty=Inspection) ?(file="") ?(context="") ?(severity=Medium) linenr column id msg =
+  { linenr; column; file; id; msg; context; ty; severity }
 let mk_internal ?(id="InternalError") msg = mk ~ty:InternalError 0 0 id msg
 let mk_from_lexbuf ?(context="") (lexbuf : Lexing.lexbuf) id msg =
   let pos = lexbuf.lex_curr_p in

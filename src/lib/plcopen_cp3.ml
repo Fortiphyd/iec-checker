@@ -27,5 +27,6 @@ let detector : Detector.t = {
   name = "Variables shall be initialized before being used";
   summary = "Every variable declaration should carry an explicit initializer.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP3";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

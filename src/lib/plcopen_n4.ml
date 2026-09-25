@@ -128,5 +128,6 @@ let detector : Detector.t = {
     "Identifiers should follow a configurable naming convention per element \
      kind (variable, constant, POU, type).";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N4";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

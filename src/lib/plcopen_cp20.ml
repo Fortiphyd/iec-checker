@@ -44,5 +44,6 @@ let detector : Detector.t = {
     "Calling an instance twice per cycle makes timers, counters and edge \
      detectors see inconsistent inputs.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP20";
+  severity = IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

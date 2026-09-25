@@ -140,5 +140,6 @@ let detector : Detector.t = {
   summary =
     "Referencing a [FOR] loop control variable after [END_FOR] relies on implementation-defined behavior.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-L13";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

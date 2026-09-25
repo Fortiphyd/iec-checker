@@ -50,5 +50,6 @@ let detector : Detector.t = {
   name = "POUs shall not call themselves directly or indirectly";
   summary = "Recursion is forbidden in IEC 61131-3 — rewrite as a loop.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP13";
+  severity = IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

@@ -11,5 +11,6 @@ type t = {
   name : string;
   summary : string;
   doc_url : string;
+  severity : Warn.severity;
   check : inputs -> Warn.t list;
 }

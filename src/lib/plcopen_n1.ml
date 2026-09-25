@@ -29,5 +29,6 @@ let detector : Detector.t = {
     "Hardcoded physical addresses should be replaced with symbolic names \
      declared in a VAR block.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N1";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

@@ -64,5 +64,6 @@ let detector : Detector.t = {
   summary =
     "Implicit casts between integer and floating-point types are forbidden.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP25";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements i.envs);
 }

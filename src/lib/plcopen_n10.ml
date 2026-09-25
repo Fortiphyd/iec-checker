@@ -36,5 +36,6 @@ let detector : Detector.t = {
     "User-defined types and function blocks should start with a configurable \
      prefix based on their kind.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N10";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

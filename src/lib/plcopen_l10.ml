@@ -19,5 +19,6 @@ let detector : Detector.t = {
   summary =
     "Loop bodies should fall through naturally instead of using [CONTINUE] / [EXIT].";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-L10";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

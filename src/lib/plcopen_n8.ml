@@ -58,5 +58,6 @@ let detector : Detector.t = {
     "Identifiers must only contain ASCII letters, digits and underscores, \
      and must not start with a digit.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N8";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

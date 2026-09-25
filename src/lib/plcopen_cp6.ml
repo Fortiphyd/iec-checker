@@ -34,5 +34,6 @@ let detector : Detector.t = {
     "Functions, function blocks and classes should not depend on global state \
      via [VAR_EXTERNAL].";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP6";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

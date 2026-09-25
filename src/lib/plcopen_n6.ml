@@ -63,5 +63,6 @@ let detector : Detector.t = {
     "Identifiers shorter than the configured minimum or longer than the \
      configured maximum should be renamed.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N6";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

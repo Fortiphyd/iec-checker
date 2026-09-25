@@ -44,5 +44,6 @@ let detector : Detector.t = {
   summary =
     "Use range comparisons instead of [=] / [<>] when comparing [TIME] values.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP28";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

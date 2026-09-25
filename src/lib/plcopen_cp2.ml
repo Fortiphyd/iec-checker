@@ -45,5 +45,6 @@ let detector : Detector.t = {
   name = "All code shall be used in the application";
   summary = "Unreachable code reflects a logic mistake and should be removed.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP2";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.cfgs);
 }

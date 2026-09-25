@@ -43,6 +43,8 @@
 - Add `PLCOpen-N1` (#68, @cangkui)
 - Add `PLCOpen-CP12` (#45)
 - Add `PLCOpen-CP20` (#49)
+- Severity levels for all checks and the `--min-severity` CLI option (#76)
+- SARIF 2.1.0 output format (`-o sarif`)
 
 ## 0.4.0 (2022-02-26)
 

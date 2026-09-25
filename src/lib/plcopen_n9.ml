@@ -81,5 +81,6 @@ let detector : Detector.t = {
     "A name used for a variable, a POU or a UDT must not also be used for a \
      different element kind.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N9";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

@@ -202,5 +202,6 @@ let detector : Detector.t = {
     "Variable names must not collide with IEC 61131-3 keywords or standard \
      library identifiers.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N3";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }
