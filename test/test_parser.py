@@ -174,6 +174,21 @@ def test_error_on_direct_variable_names_the_token():
     assert w.msg == 'unexpected token `%IW2`'
 
 
+def test_bit_access():
+    f = 'st/good/bit-access.st'
+    fdump = f'{f}.dump.json'
+    _, rc = run_checker([f])
+    assert rc == 0
+    with open(fdump, 'r') as fp:
+        scheme = json.load(fp)
+    os.remove(fdump)
+    # Bit writes are kept as a member of the variable.
+    targets = [s[2][2][2]['loc'][1]['name']
+               for s in scheme['programs'][0]['statements']
+               if s[0] == 'Expression']
+    assert targets == ['Y', 'X.%X0']
+
+
 def test_statements_order():
     """Test that POU statements are arranged in the correct order."""
     fdump = f'stdin.dump.json'

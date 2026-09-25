@@ -190,7 +190,10 @@ let fix_point_ms = (integer | (integer '.' integer)) ("ms" | "MS")
 let fix_point_us = (integer | (integer '.' integer)) ("us" | "US")
 let fix_point_ns = (integer | (integer '.' integer)) ("ns" | "NS")
 
-let label = '_'? (letter | letter ['A'-'Z' 'a'-'z' '0'-'9' '_' '.']*)
+(* Dots join the parts of struct member accesses; one not followed by a name
+   character is a separate token, as in bit access [x.%X3] or range [lo..hi]. *)
+let label_char = ['A'-'Z' 'a'-'z' '0'-'9' '_']
+let label = '_'? letter (label_char | '.' label_char)*
 
 rule initial tokinfo =
   parse

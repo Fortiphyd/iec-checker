@@ -1938,6 +1938,16 @@ let assign_stmt :=
     let eti = Syntax.expr_get_ti e in
     Syntax.StmExpr(vti, Syntax.ExprBin(eti, Syntax.ExprVariable(vti, v), Syntax.ASSIGN, e))
   }
+  (* Bit access such as [x.%X3 := TRUE]. The bit is kept as a member of the
+     variable, like a struct field. *)
+  | sv = symbolic_variable; bit = multibit_part_access; T_ASSIGN; e = expression;
+  {
+    let ti = Syntax.SymVar.get_ti sv in
+    let name = Printf.sprintf "%s.%s" (Syntax.SymVar.get_name sv) (Syntax.DirVar.get_name bit) in
+    let v = mk_var_use_sym (Syntax.SymVar.create name ti) in
+    let eti = Syntax.expr_get_ti e in
+    Syntax.StmExpr(ti, Syntax.ExprBin(eti, Syntax.ExprVariable(ti, v), Syntax.ASSIGN, e))
+  }
   | ~ = assignment_attempt; <>
   (* | ~ = ref_assign; <> *)
 
