@@ -791,6 +791,17 @@ module ProgramConfig = struct
   type qualifier = QRetain | QNonRetain | QConstant
   [@@deriving to_yojson]
 
+  (** A function block instance of the program assigned to a task. *)
+  type fb_task = {
+    fb_name : string;
+    fb_ti : TI.t;
+    fb_task : Task.t;
+  } [@@deriving to_yojson]
+
+  type conf_elem =
+    | Cnxn of VarUse.t
+    | Fb_task of fb_task
+
   type t = {
     name : string;
     ti : TI.t;
@@ -798,6 +809,7 @@ module ProgramConfig = struct
     task : Task.t option;
     conn_vars : VarUse.t list; (** Variables connected to program data flow. *)
     type_name : string option; (** POU type name referenced in configuration. *)
+    fb_tasks : fb_task list;
   } [@@deriving to_yojson]
 
   let create name ti =
@@ -805,13 +817,21 @@ module ProgramConfig = struct
     let task = None in
     let conn_vars = [] in
     let type_name = None in
-    { name; ti; qual; task; conn_vars; type_name }
+    { name; ti; qual; task; conn_vars; type_name; fb_tasks = [] }
 
   let set_qualifier pc q = { pc with qual = Some q }
 
   let set_task pc t = { pc with task = Some t }
 
   let set_conn_vars pc conn_vars = { pc with conn_vars }
+
+  let set_conf_elems pc elems =
+    let conn_vars, fb_tasks =
+      List.partition_map elems ~f:(function
+          | Cnxn v -> Either.First v
+          | Fb_task t -> Either.Second t)
+    in
+    { pc with conn_vars; fb_tasks }
 
   let set_type_name pc tn = { pc with type_name = Some tn }
 
@@ -822,6 +842,8 @@ module ProgramConfig = struct
   let get_ti t = t.ti
 
   let get_task t = t.task
+
+  let get_fb_tasks t = t.fb_tasks
 
   let to_yojson t = to_yojson t
 end

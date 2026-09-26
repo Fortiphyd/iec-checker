@@ -1714,13 +1714,18 @@ let prog_config :=
   { Syntax.ProgramConfig.set_type_name pc tn }
   | T_PROGRAM; pc = prog_name_qual; T_WITH; t = task_name; T_COLON; tn = prog_type_name;
   { Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_task pc t) tn }
-  | T_PROGRAM; pc = prog_name_qual; T_WITH; t = task_name; T_COLON; tn = prog_type_name; T_LBRACE; cvs = separated_list(T_COMMA, prog_conf_elem); T_RBRACE;
+  | T_PROGRAM; pc = prog_name_qual; T_WITH; t = task_name; T_COLON; tn = prog_type_name; cvs = prog_conf_elems;
   {
-    let pc = Syntax.ProgramConfig.set_conn_vars pc cvs in
+    let pc = Syntax.ProgramConfig.set_conf_elems pc cvs in
     Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_task pc t) tn
   }
-  | T_PROGRAM; pc = prog_name_qual; T_COLON; tn = prog_type_access; T_LBRACE; cvs = separated_list(T_COMMA, prog_conf_elem); T_RBRACE;
-  { Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_conn_vars pc cvs) tn }
+  | T_PROGRAM; pc = prog_name_qual; T_COLON; tn = prog_type_access; cvs = prog_conf_elems;
+  { Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_conf_elems pc cvs) tn }
+
+(* The standard puts them in parentheses. *)
+let prog_conf_elems :=
+  | T_LPAREN; ~ = separated_list(T_COMMA, prog_conf_elem); T_RPAREN; <>
+  | T_LBRACE; ~ = separated_list(T_COMMA, prog_conf_elem); T_RBRACE; <>
 
 (* Helper rule for prog_config *)
 let prog_config_list :=
@@ -1732,13 +1737,12 @@ let prog_config_list :=
 (* prog_conf_elems: *)
 
 let prog_conf_elem :=
-  (* | fb = fb_task
-  { fb } *)
-  | ~ = prog_cnxn; <>
+  | ~ = fb_task; <Syntax.ProgramConfig.Fb_task>
+  | ~ = prog_cnxn; <Syntax.ProgramConfig.Cnxn>
 
-(* fb_task:
-    | fn = fb_name; T_WITH; tn = task_name
-    {  } *)
+let fb_task :=
+  | id = T_IDENTIFIER; T_WITH; t = task_name;
+  { let (fb_name, fb_ti) = id in Syntax.ProgramConfig.{ fb_name; fb_ti; fb_task = t } }
 
 (* This stmt assigns program inputs and outputs to IEC variable. *)
 let prog_cnxn :=
@@ -1746,18 +1750,18 @@ let prog_cnxn :=
   | sv = symbolic_variable; T_ASSIGN; prog_data_source;
   { mk_var_use_sym sv }
   (* Output *)
-  (* | v = symbolic_variable; T_SENDTO; data_sink
-  { v } *)
+  | sv = symbolic_variable; T_SENDTO; data_sink;
+  { mk_var_use_sym sv }
 
 let prog_data_source :=
-  | ~ = constant; <>
+  | constant; {}
   (* | ~ = enumerated_value; <> *)
-  (* | ~ = global_var_access; <> *)
-  (* | ~ = direct_variable; <> *)
+  | global_var_name; {}
+  | direct_variable; {}
 
-(* let data_sink :=              *)
-(*   | ~ = global_var_access; <> *)
-(*   | ~ = direct_variable; <>   *)
+let data_sink :=
+  | global_var_name; {}
+  | direct_variable; {}
 
 (* TODO: This is not complete *)
 let config_inst_init :=

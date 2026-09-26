@@ -500,6 +500,19 @@ end
 module ProgramConfig : sig
   type t
 
+  (** A function block instance of the program assigned to a task, which the
+      standard allows as [PROGRAM P : T(FB1 WITH task)]. *)
+  type fb_task = {
+    fb_name : string;
+    fb_ti : TI.t;
+    fb_task : Task.t;
+  }
+
+  (** Elements of a program configuration *)
+  type conf_elem =
+    | Cnxn of VarUse.t (** Connection of a program input or output *)
+    | Fb_task of fb_task
+
   (** Qualifier of IEC program *)
   type qualifier = QRetain | QNonRetain | QConstant
   [@@deriving to_yojson]
@@ -515,6 +528,9 @@ module ProgramConfig : sig
   val set_conn_vars : t -> VarUse.t list -> t
   (** Set connected variables. *)
 
+  val set_conf_elems : t -> conf_elem list -> t
+  (** Set connected variables and function block tasks. *)
+
   val set_type_name : t -> string -> t
   (** Set POU type name referenced in configuration. *)
 
@@ -529,6 +545,9 @@ module ProgramConfig : sig
 
   val get_task : t -> Task.t option
   (** Get task configuration. *)
+
+  val get_fb_tasks : t -> fb_task list
+  (** Function block instances assigned to tasks. *)
 
   val to_yojson : t -> Yojson.Safe.t
 end

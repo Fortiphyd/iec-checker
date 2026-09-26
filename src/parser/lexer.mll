@@ -230,10 +230,11 @@ rule initial tokinfo =
   (* }}} *)
 
   (* {{{ Helpers for datetime types *)
-  | "T#"  { T_TSHARP }
-  | "LT#" { T_LTSHARP }
-  | "D#"  { T_DSHARP }
-  | "LD#" { T_LDSHARP }
+  (* Case doesn't matter, as in the rest of the language. *)
+  | ['T' 't'] '#'               { T_TSHARP }
+  | ['L' 'l'] ['T' 't'] '#'     { T_LTSHARP }
+  | ['D' 'd'] '#'               { T_DSHARP }
+  | ['L' 'l'] ['D' 'd'] '#'     { T_LDSHARP }
   (* }}} *)
 
   (* {{{ ST operators *)
