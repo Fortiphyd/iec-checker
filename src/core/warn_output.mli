@@ -12,6 +12,7 @@ type rule = {
   rule_name : string;
   help_url : string;
   rule_severity : W.severity;
+  rule_plcopen_importance : W.severity option;
 }
 
 val print_report :

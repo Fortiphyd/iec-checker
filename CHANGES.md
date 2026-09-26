@@ -45,6 +45,8 @@
 - Add `PLCOpen-CP20` (#49)
 - Severity levels for all checks and the `--min-severity` CLI option (#76)
 - SARIF 2.1.0 output format (`-o sarif`)
+- PLCopen Coding Guidelines importance of each rule, in `--list-checks`, JSON and SARIF output, and the `--min-plcopen-importance` option
+- JSON output of several input files is a single array
 - Record where tokens start: warnings get a `start_column`, SARIF regions cover the reported token, and directly represented variables span the whole address
 - `MultiTaskWrite`: outputs and globals written by programs in different tasks
 - Expression typing module (#71)

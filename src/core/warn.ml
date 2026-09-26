@@ -38,11 +38,13 @@ type t = {
   context: string;
   ty: warn_ty [@key "type"];
   severity: severity;
+  plcopen_importance: severity option;
 } [@@deriving yojson]
 
 let mk ?(ty=Inspection) ?(file="") ?(context="") ?(severity=Medium) ?start_column linenr column id msg =
   let start_column = Option.value start_column ~default:column in
-  { linenr; column; start_column; file; id; msg; context; ty; severity }
+  { linenr; column; start_column; file; id; msg; context; ty; severity;
+    plcopen_importance = None }
 
 let mk_for_name ?severity ~name linenr column id msg =
   let start_column =

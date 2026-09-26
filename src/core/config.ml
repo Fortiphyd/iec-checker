@@ -15,6 +15,7 @@ type t = {
   output_format      : string;
   use_color          : bool;
   min_severity       : string;
+  min_plcopen_importance : string;
   input_format       : string;
   merge              : bool;
   exclude_paths      : string list;
@@ -40,6 +41,7 @@ let default = {
   output_format      = "plain";
   use_color          = true;
   min_severity       = "low";
+  min_plcopen_importance = "";
   input_format       = "st";
   merge              = false;
   exclude_paths      = [];
@@ -132,6 +134,8 @@ let of_yojson (json : Yojson.Safe.t) : (t, string) result =
       output_format      = string_field output "format"    ~default:default.output_format;
       use_color          = bool_field   output "color"     ~default:default.use_color;
       min_severity       = string_field output "min_severity" ~default:default.min_severity;
+      min_plcopen_importance =
+        string_field output "min_plcopen_importance" ~default:default.min_plcopen_importance;
       input_format       = string_field input  "format"    ~default:default.input_format;
       merge              = bool_field   input  "merge"     ~default:default.merge;
       exclude_paths      = string_list_field input "exclude_paths" ~default:default.exclude_paths;
@@ -171,6 +175,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
       "format", `String c.output_format;
       "color",  `Bool   c.use_color;
       "min_severity", `String c.min_severity;
+      "min_plcopen_importance", `String c.min_plcopen_importance;
     ];
     "input", `Assoc [
       "format",        `String c.input_format;

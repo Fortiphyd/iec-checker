@@ -78,6 +78,12 @@ def test_list_checks_shows_severity():
 # }}}
 
 
+def test_json_single_document_for_several_files():
+    p = subprocess.run([binary_default, '-o', 'json', CP12, CP20], capture_output=True, text=True)
+    warns = json.loads(p.stdout)
+    assert {w['file'] for w in warns} == {CP12, CP20}
+
+
 # {{{ SARIF
 def test_sarif_document():
     doc, rc = run_sarif([CP12])
@@ -155,4 +161,57 @@ def test_parser_error_start_column(tmp_path):
     p = subprocess.run([binary_default, '-o', 'sarif', str(f)], capture_output=True, text=True)
     [r] = json.loads(p.stdout)['runs'][0]['results']
     assert region_text(str(f), r['locations'][0]['physicalLocation']['region']) == '%IW2'
+# }}}
+
+
+# {{{ PLCopen importance
+def test_warnings_have_plcopen_importance():
+    warns, _ = run([CP12, CP20])
+    importance = {w.id: w.plcopen_importance for w in warns}
+    assert importance['PLCOPEN-CP12'] == 'high'
+    assert importance['PLCOPEN-CP20'] == 'medium'
+    assert importance['PLCOPEN-L17'] == 'low'
+    assert importance['UnusedVariable'] == ''
+
+
+def test_min_plcopen_importance():
+    warns, _ = run([CP12, CP20], args=['--min-plcopen-importance', 'high'])
+    assert warns
+    assert all(w.id.startswith('PLCOPEN-') and w.plcopen_importance == 'high' for w in warns)
+    warns, _ = run([CP20], args=['--min-plcopen-importance', 'medium'])
+    assert 'PLCOPEN-CP20' in {w.id for w in warns}
+    assert {w.plcopen_importance for w in warns} <= {'medium', 'high'}
+
+
+def test_min_plcopen_importance_from_config(tmp_path):
+    cfg = tmp_path / 'iec_checker.json'
+    cfg.write_text(json.dumps({'output': {'min_plcopen_importance': 'high'}}))
+    warns, _ = run([CP20], args=['-c', str(cfg)])
+    assert 'PLCOPEN-CP20' not in {w.id for w in warns}
+
+
+def test_unknown_min_plcopen_importance():
+    p = subprocess.run([binary_default, '--min-plcopen-importance', 'huge', CP12],
+                       capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "Unknown PLCopen importance 'huge'" in p.stderr
+
+
+def test_list_checks_shows_plcopen_importance():
+    p = subprocess.run([binary_default, '--list-checks'], capture_output=True, text=True)
+    rows = {line.split()[0]: line.split()[2] for line in p.stdout.splitlines()
+            if line.startswith(('PLCOPEN-', 'TaintedVariable'))}
+    assert rows['PLCOPEN-CP26'] == 'low'
+    assert rows['PLCOPEN-N4'] == 'high'
+    assert rows['TaintedVariable'] == '-'
+
+
+def test_sarif_plcopen_importance():
+    doc, _ = run_sarif([CP20])
+    sarif_run = doc['runs'][0]
+    rules = {r['id']: r for r in sarif_run['tool']['driver']['rules']}
+    assert rules['PLCOPEN-CP20']['properties'] == {'plcopen-importance': 'medium'}
+    assert 'properties' not in rules['TaintedVariable']
+    cp20 = [r for r in sarif_run['results'] if r['ruleId'] == 'PLCOPEN-CP20']
+    assert all(r['properties'] == {'plcopen-importance': 'medium'} for r in cp20)
 # }}}

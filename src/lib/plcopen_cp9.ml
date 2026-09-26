@@ -40,6 +40,7 @@ let detector : Detector.t = {
     "POUs that exceed McCabe or statement-count thresholds should be split.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP9";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements i.cfgs);
 }
 

@@ -67,5 +67,6 @@ let detector : Detector.t = {
      silently change it.";
   doc_url = "";
   severity = Warn.Medium;
+  plcopen_importance = None;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

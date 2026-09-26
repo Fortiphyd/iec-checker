@@ -25,6 +25,8 @@ type t = {
   context: string;
   ty: warn_ty [@key "type"];
   severity: severity;
+  plcopen_importance: severity option;
+  (** Importance of the PLCopen rule the warning is about, if any *)
 } [@@deriving yojson]
 
 val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> ?start_column:int -> int -> int -> string -> string -> t

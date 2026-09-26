@@ -64,5 +64,6 @@ let detector : Detector.t = {
      configured maximum should be renamed.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N6";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

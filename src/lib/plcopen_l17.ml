@@ -27,5 +27,6 @@ let detector : Detector.t = {
   summary = "Every [IF] should explicitly handle the [ELSE] case.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-L17";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

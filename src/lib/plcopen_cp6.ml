@@ -35,5 +35,6 @@ let detector : Detector.t = {
      via [VAR_EXTERNAL].";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP6";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

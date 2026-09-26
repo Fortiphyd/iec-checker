@@ -82,5 +82,6 @@ let detector : Detector.t = {
      different element kind.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N9";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

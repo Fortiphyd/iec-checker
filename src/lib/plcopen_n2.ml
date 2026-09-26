@@ -45,5 +45,6 @@ let detector : Detector.t = {
      (Hungarian notation).";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N2";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

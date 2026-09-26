@@ -266,10 +266,13 @@ let is_error (w : W.t) =
   | W.Inspection ->
     List.mem ["ParserError"; "LexingError"; "UnknownError"] w.id ~equal:String.equal
 
+let detector_of (w : W.t) =
+  List.find Lib.registered_detectors ~f:(fun d -> String.equal d.Detector.id w.id)
+
 let severity_of (w : W.t) =
   if is_error w then W.High
   else
-    match List.find Lib.registered_detectors ~f:(fun d -> String.equal d.Detector.id w.id) with
+    match detector_of w with
     | Some d -> d.severity
     | None ->
       List.find_map builtin_warnings ~f:(fun (id, _, sev) ->
@@ -283,33 +286,56 @@ let parse_min_severity s =
     Printf.eprintf "Unknown severity '%s'. Supported: 'low', 'medium' and 'high'.\n" s;
     exit ReturnCode.fail
 
-(** Set severities and drop warnings below the configured minimum. *)
+let parse_min_importance s =
+  if String.is_empty s then None
+  else
+    match W.severity_of_string s with
+    | Some imp -> Some imp
+    | None ->
+      Printf.eprintf "Unknown PLCopen importance '%s'. Supported: 'low', 'medium' and 'high'.\n" s;
+      exit ReturnCode.fail
+
+(** Set severities and PLCopen importance, and drop warnings below the
+    configured minimums. With a minimum PLCopen importance, only PLCopen
+    rules are reported. *)
 let finalize ws =
-  let min = W.severity_rank (parse_min_severity (Config.get ()).min_severity) in
-  List.map ws ~f:(fun w -> { w with W.severity = severity_of w })
-  |> List.filter ~f:(fun w -> is_error w || W.severity_rank w.W.severity >= min)
+  let cfg = Config.get () in
+  let min = W.severity_rank (parse_min_severity cfg.min_severity) in
+  let min_importance = parse_min_importance cfg.min_plcopen_importance in
+  List.map ws ~f:(fun w ->
+      { w with W.severity = severity_of w;
+               plcopen_importance =
+                 Option.bind (detector_of w) ~f:(fun d -> d.Detector.plcopen_importance) })
+  |> List.filter ~f:(fun w ->
+      is_error w
+      || (W.severity_rank w.W.severity >= min
+          && match min_importance, w.W.plcopen_importance with
+          | None, _ -> true
+          | Some m, Some imp -> W.severity_rank imp >= W.severity_rank m
+          | Some _, None -> false))
 
 let sarif_rules () =
   List.map Lib.registered_detectors ~f:(fun d ->
       WO.{ rule_id = d.Detector.id; rule_name = d.name; help_url = d.doc_url;
-           rule_severity = d.severity })
+           rule_severity = d.severity; rule_plcopen_importance = d.plcopen_importance })
   @ List.map builtin_warnings ~f:(fun (id, name, sev) ->
-      WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev })
+      WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev;
+           rule_plcopen_importance = None })
 
-(* SARIF is a single document for all input files, so its warnings are
-   collected and printed at exit. *)
-let sarif_pending : W.t list ref = ref []
+(* JSON and SARIF output is a single document for all input files, so their
+   warnings are collected and printed at exit. *)
+let pending : W.t list ref = ref []
 
 let report ~use_color out_fmt ws =
   let ws = finalize ws in
   match out_fmt with
-  | WO.Sarif -> sarif_pending := !sarif_pending @ ws
-  | WO.Plain | WO.Json -> WO.print_report ~doc_urls ~use_color ws out_fmt
+  | WO.Json | WO.Sarif -> pending := !pending @ ws
+  | WO.Plain -> WO.print_report ~doc_urls ~use_color ws out_fmt
 
-let print_sarif out_fmt =
+let print_pending out_fmt =
   match out_fmt with
-  | WO.Sarif -> WO.print_report ~rules:(sarif_rules ()) !sarif_pending WO.Sarif
-  | WO.Plain | WO.Json -> ()
+  | WO.Json | WO.Sarif -> WO.print_report ~rules:(sarif_rules ()) !pending out_fmt
+  | WO.Plain -> ()
 
 let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : bool) use_color : int =
   let (read_stdin : bool) = (String.equal "-" path) || (String.is_empty path) in
@@ -390,15 +416,18 @@ let print_list_checks () =
   let detectors = Lib.registered_detectors in
   let all_ids =
     List.map detectors ~f:(fun d ->
-        (d.Detector.id, W.severity_to_string d.Detector.severity, d.Detector.name))
-    @ List.map builtin_passes ~f:(fun (id, name, sev) -> (id, W.severity_to_string sev, name))
+        (d.Detector.id, W.severity_to_string d.Detector.severity,
+         Option.value_map d.Detector.plcopen_importance ~default:"-" ~f:W.severity_to_string,
+         d.Detector.name))
+    @ List.map builtin_passes ~f:(fun (id, name, sev) -> (id, W.severity_to_string sev, "-", name))
   in
   let id_width =
-    List.fold_left all_ids ~init:0 ~f:(fun acc (id, _, _) ->
+    List.fold_left all_ids ~init:0 ~f:(fun acc (id, _, _, _) ->
       Int.max acc (String.length id))
   in
-  List.iter all_ids ~f:(fun (id, sev, name) ->
-    Printf.printf "%-*s  %-6s  %s\n" id_width id sev name);
+  Printf.printf "%-*s  %-8s  %-8s  %s\n" id_width "CHECK" "SEVERITY" "PLCOPEN" "DESCRIPTION";
+  List.iter all_ids ~f:(fun (id, sev, imp, name) ->
+    Printf.printf "%-*s  %-8s  %-8s  %s\n" id_width id sev imp name);
   Printf.printf "\n%d check(s). See <https://iec-checker.github.io/docs/detectors/> for details.\n"
     (List.length all_ids)
 
@@ -426,6 +455,7 @@ let parse_output_format s =
 (** Load configuration from file (explicit path or auto-discovery) and merge
     with CLI overrides.  Returns the final [Config.t]. *)
 let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format ~cli_min_severity
+    ~cli_min_plcopen_importance
     ~cli_dump ~cli_merge ~cli_verbose ~cli_no_color =
   (* 1. Load base config *)
   let base = match config_path with
@@ -461,6 +491,10 @@ let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format ~cli
     | Some s -> { c with min_severity = s }
     | None -> c
   in
+  let c = match cli_min_plcopen_importance with
+    | Some s -> { c with min_plcopen_importance = s }
+    | None -> c
+  in
   let c = if cli_dump then { c with dump = true } else c in
   let c = if cli_merge then { c with merge = true } else c in
   let c = if cli_verbose then { c with verbose = true } else c in
@@ -490,6 +524,17 @@ let () =
       ~description:
         "Output format for the checker messages. Supported formats: 'plain', 'json' and 'sarif' (SARIF 2.1.0)."
       ~placeholder: "OUTPUT_FORMAT"
+      ()
+  in
+
+  let cli_min_plcopen_importance =
+    Clap.optional_string
+      ~long: "min-plcopen-importance"
+      ~description:
+        "Only report PLCopen Coding Guidelines rules of at least this importance: \
+         'low', 'medium' or 'high'. Checks that aren't PLCopen rules are not reported. \
+         Errors are always reported."
+      ~placeholder: "IMPORTANCE"
       ()
   in
 
@@ -624,6 +669,7 @@ let () =
     ~cli_input_format
     ~cli_output_format
     ~cli_min_severity
+    ~cli_min_plcopen_importance
     ~cli_dump:d
     ~cli_merge:m
     ~cli_verbose:v
@@ -643,6 +689,7 @@ let () =
   let input_format = parse_input_format cfg.input_format in
   let output_format = parse_output_format cfg.output_format in
   ignore (parse_min_severity cfg.min_severity : W.severity);
+  ignore (parse_min_importance cfg.min_plcopen_importance : W.severity option);
   let use_color = cfg.use_color in
   let create_dumps = cfg.dump in
   let verbose = cfg.verbose in
@@ -674,6 +721,6 @@ let () =
             ~init:[]
           |> List.for_all ~f:(phys_equal ReturnCode.ok))
       in
-      print_sarif output_format;
+      print_pending output_format;
       if success
       then exit ReturnCode.ok else exit ReturnCode.fail

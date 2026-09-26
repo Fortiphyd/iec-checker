@@ -115,5 +115,6 @@ let detector : Detector.t = {
      statement order.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP12";
   severity = IECCheckerCore.Warn.High;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

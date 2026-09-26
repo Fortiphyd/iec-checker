@@ -37,5 +37,6 @@ let detector : Detector.t = {
      prefix based on their kind.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N10";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

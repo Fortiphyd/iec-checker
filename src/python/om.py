@@ -253,6 +253,7 @@ class Warning:
     context: str = ''
     severity: str = ''
     start_column: int = -1
+    plcopen_importance: str = ''
 
     @classmethod
     def from_dict(cls, values):
@@ -265,6 +266,7 @@ class Warning:
         args['context'] = values.get('context', '')
         args['severity'] = values.get('severity', '')
         args['start_column'] = values.get('start_column', -1)
+        args['plcopen_importance'] = values.get('plcopen_importance') or ''
         return Warning(**args)
 
     def __str__(self):

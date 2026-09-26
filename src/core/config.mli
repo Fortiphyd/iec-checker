@@ -15,6 +15,8 @@ type t = {
   output_format      : string;
   use_color          : bool;
   min_severity       : string; (** Hide warnings below: "low", "medium" or "high" *)
+  min_plcopen_importance : string;
+  (** If set, only report PLCopen rules of at least this importance *)
   input_format       : string;
   merge              : bool;
   exclude_paths      : string list;

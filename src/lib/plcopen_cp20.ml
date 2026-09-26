@@ -45,5 +45,6 @@ let detector : Detector.t = {
      detectors see inconsistent inputs.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP20";
   severity = IECCheckerCore.Warn.High;
+  plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

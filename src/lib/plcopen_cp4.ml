@@ -113,5 +113,6 @@ let detector : Detector.t = {
     "Two directly-addressed variables must not occupy overlapping memory.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP4";
   severity = IECCheckerCore.Warn.High;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

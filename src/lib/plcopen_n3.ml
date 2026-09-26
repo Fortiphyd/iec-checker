@@ -203,5 +203,6 @@ let detector : Detector.t = {
      library identifiers.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N3";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

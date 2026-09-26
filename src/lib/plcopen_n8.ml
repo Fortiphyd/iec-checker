@@ -59,5 +59,6 @@ let detector : Detector.t = {
      and must not start with a digit.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N8";
   severity = IECCheckerCore.Warn.Low;
+  plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }
