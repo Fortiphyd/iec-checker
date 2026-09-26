@@ -23,11 +23,15 @@ def test_cp1():
 def test_cp3():
     f = 'st/plcopen-cp3.st'
     fdump = f'{f}.dump.json'
-    checker_warnings, rc = run_checker([f])
+    warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP3')) == 3
     with DumpManager(fdump):
         pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* PLCOPEN-CP3 *)' in line]
+    ws = filter_warns(warns, 'PLCOPEN-CP3')
+    assert sorted(w.linenr for w in ws) == expected
+    assert ws[0].msg.startswith('Variable B is read before it is initialized')
 
 
 def test_cp6():
