@@ -87,3 +87,15 @@ def test_truly_unused_struct_still_warned():
     assert 'MS' in unused[0].msg
     with DumpManager(fdump):
         pass
+
+
+def test_variable_used_only_as_array_index():
+    fdump = 'stdin.dump.json'
+    warns, rc = check_program(
+        'PROGRAM p VAR w : ARRAY [0..9] OF INT; k : INT := 1; END_VAR '
+        'w[k + 1] := 5; END_PROGRAM')
+    assert rc == 0
+    names = [w.msg for w in filter_warns(warns, 'UnusedVariable')]
+    assert not any('K' in m.split(': ')[-1] for m in names)
+    with DumpManager(fdump):
+        pass

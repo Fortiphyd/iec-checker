@@ -179,7 +179,7 @@ def test_cp17():
     assert rc == 0
     cp17_warns = filter_warns(warns, 'PLCOPEN-CP17')
     expected = Counter([
-        (4, 21), (5, 25), (5, 25), (6, 25), (8, 17), (9, 26), (9, 26),
+        (4, 21), (5, 25), (5, 25), (6, 25), (9, 26), (9, 26),
         (10, 23), (12, 22), (12, 22), (17, 22), (18, 25), (25, 21),
     ])
     actual = Counter((w.linenr, w.column) for w in cp17_warns)
@@ -205,7 +205,8 @@ def test_l13():
     warns, rc = run_checker([f])
     assert rc == 0
     l13_warns = filter_warns(warns, 'PLCOPEN-L13')
-    assert len(l13_warns) == 3
+    # Cases 1 (two uses, one as an array subscript), 4 and 5 of the sample.
+    assert sorted(w.linenr for w in l13_warns) == [14, 15, 36, 43]
     with DumpManager(fdump):
         pass
 
@@ -250,6 +251,18 @@ def test_n1():
     [w] = filter_warns(warns, 'PLCOPEN-N1')
     assert '%MW10.2.4.1' in w.msg
     with DumpManager(fdump):
+        pass
+
+
+def test_n1_in_array_subscript(tmp_path):
+    f = tmp_path / 'n1.st'
+    f.write_text('PROGRAM p\nVAR w : ARRAY [0..9] OF INT; x : INT; END_VAR\n'
+                 'x := w[%MW6];\nEND_PROGRAM\n')
+    warns, rc = run_checker([str(f)])
+    assert rc == 0
+    [w] = filter_warns(warns, 'PLCOPEN-N1')
+    assert w.linenr == 3 and '%MW6' in w.msg
+    with DumpManager(f'{f}.dump.json'):
         pass
 
 

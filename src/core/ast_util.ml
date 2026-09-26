@@ -157,15 +157,22 @@ let rec get_stmt_exprs stmt =
 
 let get_pou_exprs elem =
   (* Statements are visited once from the top level: [get_stmt_exprs] already
-     descends into nested bodies. Arguments of function calls are added as
-     separate expressions. *)
-  let rec with_call_args e =
+     descends into nested bodies. Arguments of function calls and array
+     subscripts are added as separate expressions. *)
+  let rec subscripts = function
+    | S.ExprVariable (_, v) -> S.index_exprs v
+    | S.ExprBin (_, a, _, b) -> subscripts a @ subscripts b
+    | S.ExprUn (_, _, a) -> subscripts a
+    | S.ExprConstant _ | S.ExprFuncCall _ -> []
+  in
+  let rec with_nested e =
     e :: List.concat_map (expr_to_stmts e)
-      ~f:(fun s -> List.concat_map (get_stmt_exprs s) ~f:with_call_args)
+      ~f:(fun s -> List.concat_map (get_stmt_exprs s) ~f:with_nested)
+    @ List.concat_map (subscripts e) ~f:with_nested
   in
   get_top_stmts elem
   |> List.concat_map ~f:get_stmt_exprs
-  |> List.concat_map ~f:with_call_args
+  |> List.concat_map ~f:with_nested
 
 let get_var_uses elem =
   let rec get_vars = function
@@ -197,7 +204,9 @@ let filter_exprs ~f elem =
           acc @ [e] @ (get_nested_exprs acc e)
         end
       | S.ExprFuncCall (_, s) -> acc @ aux [] s
-      | S.ExprVariable _ | S.ExprConstant _ -> acc
+      | S.ExprVariable (_, v) ->
+        acc @ List.concat_map (S.index_exprs v) ~f:(fun e -> e :: get_nested_exprs [] e)
+      | S.ExprConstant _ -> acc
     in
     let apply_filter (exprs : S.expr list) =
       List.filter exprs ~f

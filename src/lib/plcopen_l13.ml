@@ -14,8 +14,9 @@ let get_ctrl_var_name (ctrl : S.for_control) =
 
 (** Collect all locations where [var_name] is referenced in an expression. *)
 let rec find_var_in_expr var_name = function
-  | S.ExprVariable (ti, vu)
-    when String.equal (S.VarUse.get_name vu) var_name -> [ti]
+  | S.ExprVariable (ti, vu) ->
+    (if String.equal (S.VarUse.get_name vu) var_name then [ti] else [])
+    @ List.concat_map (S.index_exprs vu) ~f:(find_var_in_expr var_name)
   | S.ExprBin (_, e1, _, e2) ->
     find_var_in_expr var_name e1 @ find_var_in_expr var_name e2
   | S.ExprUn (_, _, e) -> find_var_in_expr var_name e

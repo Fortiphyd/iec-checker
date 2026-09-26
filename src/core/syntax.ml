@@ -102,15 +102,24 @@ module type ID = sig
 end
 
 module SymVar = struct
+  (* Extended with a constructor holding an expression once expressions are
+     defined, see [Index_expr]. *)
+  type index_expr = ..
+
+  let index_expr_to_yojson_ref : (index_expr -> Yojson.Safe.t) ref = ref (fun _ -> `Null)
+  let index_expr_to_yojson e = !index_expr_to_yojson_ref e
+  let pp_index_expr fmt _ = Format.pp_print_string fmt "<index>"
+
   type t = {
     name : string;
     ti : TI.t;
     array_indexes: int option list;
+    array_index_exprs: index_expr list;
   } [@@deriving to_yojson, show]
 
   let create name ti =
     let array_indexes = [] in
-    { name; ti; array_indexes; }
+    { name; ti; array_indexes; array_index_exprs = [] }
 
   let get_name id = id.name
   let get_ti id = id.ti
@@ -120,6 +129,10 @@ module SymVar = struct
   let add_array_index_opaque var =
     { var with array_indexes = var.array_indexes @ [None] }
   let get_array_indexes var = var.array_indexes
+
+  let add_array_index_expr var e =
+    { var with array_index_exprs = var.array_index_exprs @ [e] }
+  let get_array_index_exprs var = var.array_index_exprs
 
   let to_yojson t = to_yojson t
 end
@@ -543,6 +556,21 @@ and func_param_assign = {
   inverted : bool; (** has inversion in output assignment *)
 } [@@deriving to_yojson, show]
 (* }}} *)
+
+type SymVar.index_expr += Index_expr of expr
+
+let () =
+  SymVar.index_expr_to_yojson_ref := function
+    | Index_expr e -> expr_to_yojson e
+    | _ -> `Null
+
+let index_exprs v =
+  match VarUse.get_loc v with
+  | VarUse.SymVar sv ->
+    List.filter_map (SymVar.get_array_index_exprs sv) ~f:(function
+        | Index_expr e -> Some e
+        | _ -> None)
+  | VarUse.DirVar _ -> []
 
 (* {{{ Functions to work with statements *)
 let stmt_get_ti = function

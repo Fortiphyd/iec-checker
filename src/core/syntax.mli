@@ -90,6 +90,12 @@ module SymVar : sig
       that can't be evaluated before run time, e.g. A[f(a,b)]. *)
   val get_array_indexes : t -> int option list
 
+  type index_expr = ..
+  (** An expression in an array subscript; see [Index_expr]. *)
+
+  val add_array_index_expr : t -> index_expr -> t
+  val get_array_index_exprs : t -> index_expr list
+
   val to_yojson : t -> Yojson.Safe.t
 end
 
@@ -408,6 +414,12 @@ and func_param_assign = {
   inverted : bool; (** has inversion in output assignment *)
 } [@@deriving to_yojson, show]
 (* }}} *)
+
+type SymVar.index_expr += Index_expr of expr
+
+val index_exprs : VarUse.t -> expr list
+(** [index_exprs v] The subscript expressions of the array element [v], e.g.
+    [i + 1] for [A[i + 1]]. *)
 
 (* {{{ Functions to work with statements *)
 val stmt_get_ti : statement -> TI.t

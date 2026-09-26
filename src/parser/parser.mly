@@ -79,7 +79,9 @@
             | None -> Syntax.SymVar.add_array_index_opaque acc_sv
           end
           | _ -> Syntax.SymVar.add_array_index_opaque acc_sv
-      end)
+      end
+      (* Keep the expression too, for the variables used in it. *)
+      |> fun sv -> Syntax.SymVar.add_array_index_expr sv (Syntax.Index_expr e))
 
   let mk_var_use_sym sv =
     let var_use = Syntax.VarUse.create_sym sv Syntax.VarUse.Elementary in

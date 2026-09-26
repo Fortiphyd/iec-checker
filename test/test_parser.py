@@ -189,6 +189,26 @@ def test_bit_access():
     assert targets == ['Y', 'X.%X0']
 
 
+def test_array_index_expressions():
+    """Non-constant subscripts are kept as expressions."""
+    fdump = 'stdin.dump.json'
+    _, rc = check_program(
+        'PROGRAM p VAR w : ARRAY [0..9] OF INT; i, x : INT; END_VAR '
+        'w[i + 1] := x; x := w[3]; END_PROGRAM')
+    assert rc == 0
+    with open(fdump, 'r') as fp:
+        scheme = json.load(fp)
+    os.remove(fdump)
+    [assign, read] = scheme['programs'][0]['statements']
+    lhs = assign[2][2][2]['loc'][1]
+    assert lhs['array_indexes'] == [None]
+    [index] = lhs['array_index_exprs']
+    assert index[0] == 'Bin' and index[3] == ['ADD']
+    rhs = read[2][4][2]['loc'][1]
+    assert rhs['array_indexes'] == [3]
+    assert rhs['array_index_exprs'][0][0] == 'Constant'
+
+
 def test_statements_order():
     """Test that POU statements are arranged in the correct order."""
     fdump = f'stdin.dump.json'
