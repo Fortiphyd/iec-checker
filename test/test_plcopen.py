@@ -539,3 +539,18 @@ def test_cp6_constant_globals():
     with open(f) as fp:
         expected = [i for i, line in enumerate(fp, 1) if '(* CP6 *)' in line]
     assert [w.linenr for w in filter_warns(warns, 'PLCOPEN-CP6')] == expected
+
+
+def test_cp2():
+    """Dead code after jumps, including loops, and under constant
+    conditions; IF FALSE is the rule's bypass idiom."""
+    f = 'st/plcopen-cp2.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* CP2 *)' in line]
+    ws = filter_warns(warns, 'PLCOPEN-CP2')
+    assert sorted(w.linenr for w in ws) == expected
+    assert ws[0].msg.endswith('unreachable code (it follows RETURN, EXIT or CONTINUE)')
