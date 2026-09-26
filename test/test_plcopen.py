@@ -551,6 +551,36 @@ def test_cp2():
         pass
     with open(f) as fp:
         expected = [i for i, line in enumerate(fp, 1) if '(* CP2 *)' in line]
-    ws = filter_warns(warns, 'PLCOPEN-CP2')
+    # The sample has no entry point for its functions; see the test below.
+    ws = [w for w in filter_warns(warns, 'PLCOPEN-CP2') if 'unreachable code' in w.msg]
     assert sorted(w.linenr for w in ws) == expected
     assert ws[0].msg.endswith('unreachable code (it follows RETURN, EXIT or CONTINUE)')
+
+
+def test_cp2_unreferenced():
+    """POUs nothing reachable from the programs the configuration runs uses:
+    calls in expressions and arguments, FB types of arrays, struct members
+    and globals count as uses; self-recursion and uses by dead POUs don't."""
+    f = 'st/plcopen-cp2-unreferenced.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* CP2 *)' in line]
+    ws = filter_warns(warns, 'PLCOPEN-CP2')
+    assert sorted(w.linenr for w in ws) == expected
+    msgs = {w.linenr: w.msg for w in ws}
+    assert msgs[21] == ('All code shall be used in the application: Function Unused '
+                        'is never used (nothing in the application uses it)')
+    assert msgs[70].endswith('Program Spare is never used (no configuration runs it)')
+
+
+def test_cp2_library_not_reported():
+    """Without a program, the POUs are a library used elsewhere."""
+    f = 'st/plcopen-cp2-library.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert not [w for w in filter_warns(warns, 'PLCOPEN-CP2') if 'never used' in w.msg]

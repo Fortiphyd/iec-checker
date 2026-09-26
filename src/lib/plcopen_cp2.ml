@@ -12,7 +12,10 @@ module S = Syntax
 
    The rule allows a bypassed section explained by a comment, and gives
    [IF FALSE THEN] as its example. Comments aren't kept by the parser, so a
-   literal [IF FALSE] is taken to be such a bypass. *)
+   literal [IF FALSE] is taken to be such a bypass.
+
+   Functions and function blocks nothing in the application uses are dead
+   code too, as are programs no configuration runs. *)
 
 let warn stmt why =
   Warn.mk_at (S.stmt_get_ti stmt) "PLCOPEN-CP2"
@@ -154,11 +157,111 @@ and check_stmt stmt : Warn.t list * bool =
     (ws, jumps && List.exists body ~f:(function S.StmReturn _ -> true | _ -> false))
   | S.StmExpr _ | S.StmFuncCall _ | S.StmElsif _ | S.StmEmpty _ -> ([], false)
 
+(* {{{ Unreferenced POUs *)
+(** Names of the types used by a type specification. *)
+let spec_types =
+  (* A type name can parse as either. *)
+  let named = function S.DTySpecSimple ty | S.DTySpecEnum ty -> [ty] | _ -> [] in
+  function
+  | S.DTyDeclSingleElement (spec, _) -> named spec
+  | S.DTyDeclArrayType (_, S.TyDerived (S.DTyUseSingleElement spec), _)
+  | S.DTyDeclRefType (_, S.TyDerived (S.DTyUseSingleElement spec), _) -> named spec
+  | S.DTyDeclArrayType (_, S.TyDerived (S.DTyUseStructType ty), _)
+  | S.DTyDeclRefType (_, S.TyDerived (S.DTyUseStructType ty), _) -> [ty]
+  | S.DTyDeclStructType (_, elems) ->
+    List.concat_map elems ~f:(fun (e : S.struct_elem_spec) -> named e.struct_elem_ty)
+  | _ -> []
+
+let decl_types decls = List.concat_map decls ~f:(fun d ->
+    Option.value_map (S.VarDecl.get_ty_spec d) ~default:[] ~f:spec_types)
+
+(** POUs and types referenced by [elem]: the types of its variables and the
+    functions it calls, including in expressions and call arguments. *)
+let references elem =
+  let rec in_expr = function
+    | S.ExprFuncCall (_, S.StmFuncCall (_, f, _)) -> [S.Function.get_name f]
+    | S.ExprBin (_, a, _, b) -> in_expr a @ in_expr b
+    | S.ExprUn (_, _, a) -> in_expr a
+    | S.ExprFuncCall _ | S.ExprVariable _ | S.ExprConstant _ -> []
+  in
+  let calls =
+    List.filter_map (AU.get_pou_stmts elem) ~f:(function
+        | S.StmFuncCall (_, f, _) -> Some (S.Function.get_name f)
+        | _ -> None)
+  in
+  decl_types (AU.get_var_decls elem) @ calls @ List.concat_map (AU.get_pou_exprs elem) ~f:in_expr
+
+let unreferenced elems =
+  let configs = List.filter_map elems ~f:(function S.IECConfiguration (_, c) -> Some c | _ -> None) in
+  let programs = List.filter_map elems ~f:(function S.IECProgram (_, p) -> Some p.name | _ -> None) in
+  let run =
+    List.concat_map configs ~f:(fun c ->
+        List.concat_map c.resources ~f:(fun (r : S.resource_decl) ->
+            List.filter_map r.programs ~f:S.ProgramConfig.get_type_name))
+  in
+  (* Without a configuration that runs programs, the programs are the entry
+     points. Code without any is a library, whose POUs are used elsewhere. *)
+  let has_tasks = not (List.is_empty run) in
+  if not has_tasks && List.is_empty programs then []
+  else begin
+    let pous =
+      List.filter_map elems ~f:(fun e ->
+          match e with
+          | S.IECFunction (_, f) -> Some (S.Function.get_name f.id, e)
+          | S.IECFunctionBlock (_, fb) -> Some (S.FunctionBlock.get_name fb.id, e)
+          | S.IECProgram (_, p) -> Some (p.name, e)
+          | S.IECClass (_, c) -> Some (c.class_name, e)
+          | S.IECType (_, _, (name, _)) -> Some (name, e)
+          | _ -> None)
+      |> String.Map.of_alist_reduce ~f:(fun first _ -> first)
+    in
+    let refs name =
+      match Map.find pous name with
+      | Some (S.IECType (_, _, (_, spec))) -> spec_types spec
+      | Some (S.IECClass (_, c) as e) -> Option.to_list c.parent_name @ references e
+      | Some e -> references e
+      | None -> []
+    in
+    (* Entry points, and the types of global variables. *)
+    let roots =
+      (if has_tasks then run else programs)
+      @ List.concat_map configs ~f:(fun c ->
+          decl_types (c.variables @ List.concat_map c.resources ~f:(fun (r : S.resource_decl) -> r.variables)))
+    in
+    let rec visit seen = function
+      | [] -> seen
+      | n :: rest when Set.mem seen n -> visit seen rest
+      | n :: rest -> visit (Set.add seen n) (refs n @ rest)
+    in
+    let used = visit String.Set.empty roots in
+    List.filter_map elems ~f:(fun e ->
+        let kind = match e with
+          | S.IECFunction _ -> Some "Function"
+          | S.IECFunctionBlock _ -> Some "Function block"
+          | S.IECProgram _ when has_tasks -> Some "Program"
+          | _ -> None
+        in
+        Option.bind kind ~f:(fun kind ->
+            Option.bind (S.get_pou_name_as_written e) ~f:(fun (name, ti) ->
+                if Set.mem used (String.uppercase name) then None
+                else
+                  let why =
+                    match e with
+                    | S.IECProgram _ -> "no configuration runs it"
+                    | _ -> "nothing in the application uses it"
+                  in
+                  Some (Warn.mk_at ti "PLCOPEN-CP2"
+                          (Printf.sprintf "All code shall be used in the application: \
+                                           %s %s is never used (%s)" kind name why)))))
+  end
+(* }}} *)
+
 let do_check elems =
   List.concat_map elems ~f:(function
       | S.IECProgram _ | S.IECFunctionBlock _ | S.IECFunction _ | S.IECClass _ as e ->
         fst (check_list (AU.get_top_stmts e))
       | _ -> [])
+  @ unreferenced elems
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP2";
