@@ -596,6 +596,7 @@ type fb_decl = {
 type program_decl = {
   is_retain : bool;
   name : string;
+  name_ti : TI.t; (** Name of the program as written *)
   variables : VarDecl.t list; (** Variables declared in this program *)
   statements : statement list;
 }
@@ -604,6 +605,7 @@ type program_decl = {
 type class_decl = {
   specifier : class_specifier option;
   class_name : string;
+  class_ti : TI.t; (** Name of the class as written *)
   parent_name : string option; (** Name of the parent class. *)
   interfaces : string list; (** Names of the implemented interfaces. *)
   variables : VarDecl.t list; (** Variables declared in this class. *)
@@ -612,6 +614,7 @@ type class_decl = {
 [@@deriving to_yojson]
 and interface_decl = {
   interface_name : string;
+  interface_ti : TI.t; (** Name of the interface as written *)
   parents : string list; (** Names of the parent interfaces. *)
   method_prototypes : MethodPrototype.t list; (** Prototypes of the methods provided by this interface. *)
 }
@@ -652,7 +655,7 @@ type iec_library_element =
   | IECClass of         int (** id *) * class_decl         [@name "Class"]
   | IECInterface of     int (** id *) * interface_decl     [@name "Interface"]
   | IECConfiguration of int (** id *) * configuration_decl [@name "Configuration"]
-  | IECType of          int (** id *) * derived_ty_decl    [@name "Type"]
+  | IECType of          int (** id *) * TI.t (** name *) * derived_ty_decl [@name "Type"]
 [@@deriving to_yojson]
 
 val mk_pou : [< `Function of function_decl
@@ -661,7 +664,15 @@ val mk_pou : [< `Function of function_decl
              | `Class of class_decl
              | `Interface of interface_decl
              | `Configuration of configuration_decl
-             | `Type of derived_ty_decl ] -> iec_library_element
+             | `Type of TI.t * derived_ty_decl ] -> iec_library_element
+
+val get_pou_name_ti : iec_library_element -> TI.t option
+(** [get_pou_name_ti] Token of the name of the given library element, with its
+    spelling as written in [raw]; [None] for configurations. *)
+
+val get_pou_name_as_written : iec_library_element -> (string * TI.t) option
+(** [get_pou_name_as_written] Name of the given library element as written,
+    and its token; [None] for configurations. *)
 
 val get_pou_id : iec_library_element -> int
 (** [get_pou_id] Get unique identifier of the given library element. *)

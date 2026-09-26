@@ -14,14 +14,14 @@ let check_prefix prefixes kind name linenr col =
     Some (Warn.mk_for_name ~name linenr col "PLCOPEN-N10" msg)
 
 let check_elem prefixes = function
-  | S.IECType (_, (name, spec)) ->
+  (* Prefixes are compared with the name as written. *)
+  | S.IECType (_, _, (_, spec)) as e ->
     let kind = S.dty_decl_spec_kind_to_string spec in
-    Option.to_list (check_prefix prefixes kind name 0 0)
-  | S.IECFunctionBlock (_, fb) ->
-    let ti = S.FunctionBlock.get_ti fb.id in
-    let name = S.FunctionBlock.get_name fb.id in
-    Option.to_list
-      (check_prefix prefixes "FUNCTION_BLOCK" name ti.linenr ti.col)
+    Option.value_map (S.get_pou_name_as_written e) ~default:[] ~f:(fun (name, ti) ->
+        Option.to_list (check_prefix prefixes kind name ti.linenr ti.col))
+  | S.IECFunctionBlock _ as e ->
+    Option.value_map (S.get_pou_name_as_written e) ~default:[] ~f:(fun (name, ti) ->
+        Option.to_list (check_prefix prefixes "FUNCTION_BLOCK" name ti.linenr ti.col))
   | _ -> []
 
 let do_check elems =

@@ -48,6 +48,7 @@
 - PLCopen Coding Guidelines importance of each rule, in `--list-checks`, JSON and SARIF output, and the `--min-plcopen-importance` option
 - JSON output of several input files is a single array
 - Parser: keep non-constant array subscripts as expressions, so variables and addresses used in them are seen by the detectors (PLCOPEN-L13, N1, CP17, unused variables)
+- Keep the position and spelling of program, class, interface and type names: PLCOPEN-N4, N6, N8, N9, N10 and CP9 report them where declared, and N4 and N10 check the names as written
 - Record where tokens start: warnings get a `start_column`, SARIF regions cover the reported token, and directly represented variables span the whole address
 - `MultiTaskWrite`: outputs and globals written by programs in different tasks
 - Expression typing module (#71)

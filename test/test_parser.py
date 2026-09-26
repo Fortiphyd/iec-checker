@@ -209,6 +209,19 @@ def test_array_index_expressions():
     assert rhs['array_index_exprs'][0][0] == 'Constant'
 
 
+def test_declaration_names_as_written():
+    fdump = 'stdin.dump.json'
+    _, rc = check_program(
+        'TYPE myType : INT; END_TYPE PROGRAM mainProgram VAR x : INT; END_VAR x := 1; END_PROGRAM')
+    assert rc == 0
+    with open(fdump, 'r') as fp:
+        scheme = json.load(fp)
+    os.remove(fdump)
+    prog = scheme['programs'][0]
+    assert prog['name'] == 'MAINPROGRAM'
+    assert (prog['name_ti']['raw'], prog['name_ti']['start_col']) == ('mainProgram', 37)
+
+
 def test_statements_order():
     """Test that POU statements are arranged in the correct order."""
     fdump = f'stdin.dump.json'

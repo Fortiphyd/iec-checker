@@ -105,7 +105,7 @@ let[@warning "-27"] run elements envs =
   List.fold_left elements
     ~f:(fun warns e ->
         let ws = match e with
-          | S.IECType (_, (ty_name, ty_spec)) -> check_ty_decl ty_name ty_spec
+          | S.IECType (_, _, (ty_name, ty_spec)) -> check_ty_decl ty_name ty_spec
           | _ -> check_var_decls e
         in
         warns @ ws)

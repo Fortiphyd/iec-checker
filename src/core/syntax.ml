@@ -915,6 +915,7 @@ type fb_decl = {
 type program_decl = {
   is_retain : bool;
   name : string;
+  name_ti : TI.t; (** Name of the program as written *)
   variables : VarDecl.t list;
   statements : statement list;
 }
@@ -923,6 +924,7 @@ type program_decl = {
 type class_decl = {
   specifier : class_specifier option;
   class_name : string;
+  class_ti : TI.t; (** Name of the class as written *)
   parent_name : string option; (** Name of the parent class. *)
   interfaces : string list; (** Names of the implemented interfaces. *)
   variables : VarDecl.t list; (** Variables declared in this class. *)
@@ -931,6 +933,7 @@ type class_decl = {
 [@@deriving to_yojson]
 and interface_decl = {
   interface_name : string;
+  interface_ti : TI.t; (** Name of the interface as written *)
   parents : string list; (** Names of the parent interfaces. *)
   method_prototypes : MethodPrototype.t list; (** Prototypes of the methods provided by this interface. *)
 }
@@ -968,7 +971,7 @@ type iec_library_element =
   | IECClass of         int (** id *) * class_decl         [@name "Class"]
   | IECInterface of     int (** id *) * interface_decl     [@name "Interface"]
   | IECConfiguration of int (** id *) * configuration_decl [@name "Configuration"]
-  | IECType of          int (** id *) * derived_ty_decl    [@name "Type"]
+  | IECType of          int (** id *) * TI.t (** name *) * derived_ty_decl [@name "Type"]
 [@@deriving to_yojson]
 
 let next_id =
@@ -984,7 +987,29 @@ let mk_pou = function
   | `Class         decl -> let id = next_id () in IECClass(id, decl)
   | `Interface     decl -> let id = next_id () in IECInterface(id, decl)
   | `Configuration decl -> let id = next_id () in IECConfiguration(id, decl)
-  | `Type          decl -> let id = next_id () in IECType(id, decl)
+  | `Type (ti, decl)   -> let id = next_id () in IECType(id, ti, decl)
+
+let get_pou_name_ti = function
+  | IECFunction (_, f)       -> Some (Function.get_ti f.id)
+  | IECFunctionBlock (_, fb) -> Some (FunctionBlock.get_ti fb.id)
+  | IECProgram (_, p)        -> Some p.name_ti
+  | IECClass (_, c)          -> Some c.class_ti
+  | IECInterface (_, i)      -> Some i.interface_ti
+  | IECType (_, ti, _)       -> Some ti
+  | IECConfiguration _       -> None
+
+let get_pou_name_as_written e =
+  let name = match e with
+    | IECFunction (_, f)       -> Function.get_name f.id
+    | IECFunctionBlock (_, fb) -> FunctionBlock.get_name fb.id
+    | IECProgram (_, p)        -> p.name
+    | IECClass (_, c)          -> c.class_name
+    | IECInterface (_, i)      -> i.interface_name
+    | IECType (_, _, (n, _))   -> n
+    | IECConfiguration (_, c)  -> c.name
+  in
+  Option.map (get_pou_name_ti e) ~f:(fun (ti : TI.t) ->
+      ((if String.is_empty ti.raw then name else ti.raw), ti))
 
 let get_pou_id = function
   | IECFunction (id, _)      -> id
@@ -993,7 +1018,7 @@ let get_pou_id = function
   | IECClass (id, _)         -> id
   | IECInterface (id, _)     -> id
   | IECConfiguration (id, _) -> id
-  | IECType (id, _)          -> id
+  | IECType (id, _, _)       -> id
 
 let get_pou_vars_decl = function
   | IECFunction (_, f)       -> f.variables

@@ -826,7 +826,7 @@ let type_decl :=
 (*   { let name, _ = name_id in (name, ty) }                   *)
 let type_decl_helper_opt :=
   | name_id = T_IDENTIFIER; T_COLON; ty = option(type_spec_helper);
-  { let name, _ = name_id in (name, ty) }
+  { (name_id, ty) }
 (* Same as elem_type_name, but with length of strings. *)
 let type_spec_helper :=
   | ~ = numeric_type_name; <>
@@ -842,19 +842,19 @@ let simple_type_decl :=
   (* | ty_decl_name = simple_type_name; T_COLON; init_vals = simple_spec_init; *)
   | name_type = type_decl_helper_opt; ci = optional_assign(constant_expr);
   {
-    let (ty_name, ty_decl_opt) = name_type in
+    let ((ty_name, ti), ty_decl_opt) = name_type in
     let ty_decl = match ty_decl_opt with
     | Some(v) -> v
     | None -> raise (SyntaxError "Missing type name declaration")
     in
     let ty_spec = Syntax.DTySpecElementary(ty_decl) in
-    ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci)
+    ti, (ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci))
   }
   | ty_name_id = T_IDENTIFIER; T_COLON; ty_decl = simple_type_access; ci = optional_assign(constant_expr);
   {
-    let ty_name, _ = ty_name_id in
+    let ty_name, ti = ty_name_id in
     let ty_spec = Syntax.DTySpecSimple(ty_decl) in
-    ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci)
+    ti, (ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci))
   }
 
 let simple_spec_init :=
@@ -876,8 +876,8 @@ let subrange_spec_init :=
   | s = subrange_spec; T_ASSIGN; ic = signed_int;
   {
     match s with
-    | ty_name, Syntax.DTyDeclSubrange(ty_spec, _) ->
-      ty_name, Syntax.DTyDeclSubrange(ty_spec, (c_get_int_exn ic))
+    | ti, (ty_name, Syntax.DTyDeclSubrange(ty_spec, _)) ->
+      ti, (ty_name, Syntax.DTyDeclSubrange(ty_spec, (c_get_int_exn ic)))
     | _ -> assert false
   }
   | ~ = subrange_spec; <>
@@ -885,7 +885,7 @@ let subrange_spec_init :=
 let subrange_spec :=
   | name_type = type_decl_helper_opt; T_LPAREN; s = subrange; T_RPAREN;
   {
-    let (ty_name, ty_decl_opt) = name_type in
+    let ((ty_name, ti), ty_decl_opt) = name_type in
     let ty_decl = match ty_decl_opt with
     | Some(v) -> v
     | None -> raise (SyntaxError "Missing subrange type declaration")
@@ -895,7 +895,7 @@ let subrange_spec :=
     else
       let (_, lb, ub) = s in
       (* According the Standard, the initial value is assigned to lower bound by default. *)
-      ty_name, Syntax.DTyDeclSubrange((ty_decl, lb, ub), lb)
+      ti, (ty_name, Syntax.DTyDeclSubrange((ty_decl, lb, ub), lb))
   }
   (* | tn = subrange_type_access;
   { } *)
@@ -916,14 +916,15 @@ let subrange :=
 let enum_type_decl :=
   | type_opts = type_decl_helper_opt; specs = named_spec_init;
   {
-    let (enum_name, elem_type_name) = type_opts
+    let ((enum_name, ti), elem_type_name) = type_opts
     and (element_specs, default_value) = specs in
-    enum_name, Syntax.DTyDeclEnumType(elem_type_name, element_specs, default_value)
+    ti, (enum_name, Syntax.DTyDeclEnumType(elem_type_name, element_specs, default_value))
   }
-  | enum_name = enum_type_name; T_COLON; specs = enum_spec_init;
+  | enum_id = T_IDENTIFIER; T_COLON; specs = enum_spec_init;
   {
-    let (element_specs, default_value) = specs in
-    enum_name, Syntax.DTyDeclEnumType(None, element_specs, default_value)
+    let (enum_name, ti) = enum_id
+    and (element_specs, default_value) = specs in
+    ti, (enum_name, Syntax.DTyDeclEnumType(None, element_specs, default_value))
   }
 
 let named_spec_init :=
@@ -977,9 +978,9 @@ let enum_value_opt :=
 let array_type_decl :=
   | name_type = type_decl_helper_opt; specs = array_spec_init;
   {
-    let (name, _) = name_type
+    let ((name, ti), _) = name_type
     and (subranges, ty, initializer_list) = specs in
-    name, Syntax.DTyDeclArrayType(subranges, ty, initializer_list)
+    ti, (name, Syntax.DTyDeclArrayType(subranges, ty, initializer_list))
   }
 
 let array_spec_init :=
@@ -1052,9 +1053,9 @@ let array_elem_init_value :=
 let struct_type_decl :=
   | name_type = type_decl_helper_opt; spec = struct_spec;
   {
-    let (name, _) = name_type
+    let ((name, ti), _) = name_type
     and (is_overlap, elem_specs) = spec in
-    name, Syntax.DTyDeclStructType(is_overlap, elem_specs)
+    ti, (name, Syntax.DTyDeclStructType(is_overlap, elem_specs))
   }
 
 let struct_spec :=
@@ -1130,7 +1131,7 @@ let struct_elem_init :=
 let str_type_decl :=
   | name_type = type_decl_helper_opt; init_expr = optional_assign(constant_expr);
   {
-    let (ty_name, ty_decl_opt) = name_type in
+    let ((ty_name, ti), ty_decl_opt) = name_type in
     let ty_decl = match ty_decl_opt with
     | Some(v) -> v
     | None -> raise (SyntaxError "Missing string type name declaration")
@@ -1154,7 +1155,7 @@ let str_type_decl :=
             end
           | None -> None
       in
-      ty_name, Syntax.DTyDeclSingleElement(ty_spec, initial_value)
+      ti, (ty_name, Syntax.DTyDeclSingleElement(ty_spec, initial_value))
   }
 (* }}} *)
 
@@ -1168,9 +1169,9 @@ let direct_variable :=
 let ref_type_decl :=
   | name_type = type_decl_helper_opt; spec = ref_spec_init;
   {
-    let (ref_name, _) = name_type
+    let ((ref_name, ti), _) = name_type
     and (num_of_refs, ty, inval_opt) = spec in
-    ref_name, Syntax.DTyDeclRefType(num_of_refs, ty, inval_opt)
+    ti, (ref_name, Syntax.DTyDeclRefType(num_of_refs, ty, inval_opt))
   }
 
 (* There is typo in Standard. I believe that '; =' means ':=' *)
@@ -1469,10 +1470,10 @@ let class_decl :=
       methods = method_decl *;
     T_END_CLASS;
   {
-    let (class_name, _) = id
+    let (class_name, class_ti) = id
     and interfaces = match ilist_opt with Some(ilist) -> ilist | None -> []
     in
-    Syntax.{ specifier; class_name; parent_name; interfaces; variables; methods; }
+    Syntax.{ specifier; class_name; class_ti; parent_name; interfaces; variables; methods; }
   }
 let class_specifier :=
   | T_FINAL; { Syntax.CFinal }
@@ -1496,11 +1497,12 @@ let interface_decl :=
       prototypes = method_prototype *;
     T_END_INTERFACE;
   {
-    let (name, _) = id
+    let (name, interface_ti) = id
     and parent_interfaces = match parents_opt with Some(p) -> p | None -> []
     in
     {
       Syntax.interface_name = name;
+      Syntax.interface_ti;
       Syntax.parents = parent_interfaces;
       Syntax.method_prototypes = prototypes;
     }
@@ -1534,14 +1536,16 @@ let access_spec :=
 
 (* {{{ Table 47 -- Program definition *)
 let prog_decl :=
-  | T_PROGRAM; n = prog_type_name; var_decls_opt = option(var_decls); ss = fb_body; T_END_PROGRAM;
+  | T_PROGRAM; id = prog_type_name_id; var_decls_opt = option(var_decls); ss = fb_body; T_END_PROGRAM;
   {
     let vds = match var_decls_opt with
       | Some v -> v
       | None -> []
     in
+    let (n, name_ti) = id in
     Syntax.{ is_retain = false;
       name = n;
+      name_ti;
       variables = vds;
       statements = ss }
   }
@@ -1549,6 +1553,10 @@ let prog_decl :=
 let prog_type_name :=
   | id = T_IDENTIFIER;
   { let name, _ = id in name }
+
+(* Same as prog_type_name, keeping the token. *)
+let prog_type_name_id :=
+  | ~ = T_IDENTIFIER; <>
 
 let prog_type_access :=
   | ~ = prog_type_name; <>

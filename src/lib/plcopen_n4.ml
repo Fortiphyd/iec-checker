@@ -80,13 +80,13 @@ let pou_name_and_loc = function
     let ti = S.FunctionBlock.get_ti fb.id in
     let name = display_name_of_ti ti (S.FunctionBlock.get_name fb.id) in
     Some (name, ti.linenr, ti.col)
-  | S.IECProgram (_, p) -> Some (p.name, 0, 0)
-  | S.IECClass (_, c) -> Some (c.class_name, 0, 0)
-  | S.IECInterface (_, i) -> Some (i.interface_name, 0, 0)
+  | S.IECProgram _ | S.IECClass _ | S.IECInterface _ as e ->
+    Option.map (S.get_pou_name_as_written e) ~f:(fun (name, ti) -> (name, ti.linenr, ti.col))
   | S.IECConfiguration _ | S.IECType _ -> None
 
 let type_name_and_loc = function
-  | S.IECType (_, (name, _)) -> Some (name, 0, 0)
+  | S.IECType _ as e ->
+    Option.map (S.get_pou_name_as_written e) ~f:(fun (name, ti) -> (name, ti.linenr, ti.col))
   | _ -> None
 
 let check_elem cfg elem =

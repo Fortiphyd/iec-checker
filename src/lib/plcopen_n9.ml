@@ -20,16 +20,19 @@ let pou_occurrence = function
     Some { name = S.FunctionBlock.get_name fb.id; kind = `Pou;
            linenr = ti.linenr; col = ti.col }
   | S.IECProgram (_, p) ->
-    Some { name = p.name; kind = `Pou; linenr = 0; col = 0 }
+    Some { name = p.name; kind = `Pou; linenr = p.name_ti.linenr; col = p.name_ti.col }
   | S.IECClass (_, c) ->
-    Some { name = c.class_name; kind = `Pou; linenr = 0; col = 0 }
+    Some { name = c.class_name; kind = `Pou; linenr = c.class_ti.linenr; col = c.class_ti.col }
   | S.IECInterface (_, i) ->
-    Some { name = i.interface_name; kind = `Pou; linenr = 0; col = 0 }
+    Some { name = i.interface_name; kind = `Pou;
+           linenr = i.interface_ti.linenr; col = i.interface_ti.col }
   | S.IECType _ | S.IECConfiguration _ -> None
 
+(* Names are compared as the lexer upper-cases them: IEC 61131-3 names are
+   case-insensitive. *)
 let type_occurrence = function
-  | S.IECType (_, (name, _)) ->
-    Some { name; kind = `Type; linenr = 0; col = 0 }
+  | S.IECType (_, ti, (name, _)) ->
+    Some { name; kind = `Type; linenr = ti.linenr; col = ti.col }
   | _ -> None
 
 let var_occurrences elem =

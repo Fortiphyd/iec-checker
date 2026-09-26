@@ -34,7 +34,7 @@ let env_of elements elem =
         (of_alist (decl_specs (AU.get_var_decls elem)))
         ~combine:(fun ~key:_ _ local -> local);
     types = of_alist (List.filter_map elements ~f:(function
-        | S.IECType (_, (name, spec)) -> Some (name, spec)
+        | S.IECType (_, _, (name, spec)) -> Some (name, spec)
         | _ -> None));
     fbs = of_alist (List.filter_map elements ~f:(function
         | S.IECFunctionBlock (_, fb) -> Some (S.FunctionBlock.get_name fb.id, fb.variables)

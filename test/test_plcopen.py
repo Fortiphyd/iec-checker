@@ -1,6 +1,7 @@
 """Tests for PLCOpen inspections."""
 import sys
 import os
+import json
 from collections import Counter
 
 sys.path.append(os.path.join(os.path.dirname(
@@ -334,3 +335,66 @@ def test_n10():
     assert len(filter_warns(warns, 'PLCOPEN-N10')) == 2
     with DumpManager(fdump):
         pass
+
+
+# {{{ Names of programs, classes, interfaces and types
+NAMES = """TYPE motor_state : (RUN, STOP); END_TYPE
+TYPE AnalogSignalRange : STRUCT lo : INT; END_STRUCT END_TYPE
+TYPE stPoint : STRUCT x : INT; END_STRUCT END_TYPE
+FUNCTION_BLOCK fb_Pump
+VAR x : INT; END_VAR
+x := 1;
+END_FUNCTION_BLOCK
+PROGRAM mainProgram
+VAR y : INT; END_VAR
+y := 1;
+END_PROGRAM
+"""
+
+
+def check_names(tmp_path, config):
+    f = tmp_path / 'names.st'
+    f.write_text(NAMES)
+    cfg = tmp_path / 'iec_checker.json'
+    cfg.write_text(json.dumps({'naming_conventions': config}))
+    warns, rc = run_checker([str(f)], args=['-c', str(cfg)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    return warns
+
+
+def test_n4_uses_names_as_written(tmp_path):
+    warns = check_names(tmp_path, {'case': {'pou': 'lowerCamelCase', 'type': 'lower_snake_case'}})
+    flagged = {(w.linenr, w.msg.split()[1]) for w in filter_warns(warns, 'PLCOPEN-N4')}
+    # mainProgram and motor_state match; the other names are reported where declared.
+    assert flagged == {(2, 'AnalogSignalRange'), (3, 'stPoint'), (4, 'fb_Pump')}
+
+
+def test_n10_prefix_is_case_sensitive(tmp_path):
+    warns = check_names(tmp_path, {'udt_prefixes': {'STRUCT': 'st', 'FUNCTION_BLOCK': 'FB_'}})
+    flagged = {(w.linenr, w.msg.split()[1]) for w in filter_warns(warns, 'PLCOPEN-N10')}
+    # stPoint has the prefix as written; fb_Pump doesn't.
+    assert flagged == {(2, 'AnalogSignalRange'), (4, 'fb_Pump')}
+
+
+def test_n9_reports_type_position(tmp_path):
+    f = tmp_path / 'n9.st'
+    f.write_text('TYPE Counter : STRUCT v : INT; END_STRUCT END_TYPE\n'
+                 'PROGRAM p\nVAR Counter : INT; END_VAR\nCounter := 1;\nEND_PROGRAM\n')
+    warns, rc = run_checker([str(f)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-N9')) == [1, 3]
+
+
+def test_cp9_names_the_pou():
+    f = 'st/plcopen-cp9.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    ws = filter_warns(warns, 'PLCOPEN-CP9')
+    assert ws and all(w.linenr > 0 and w.msg.startswith('CHARCURVE is too complex') for w in ws)
+# }}}
