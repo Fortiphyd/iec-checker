@@ -50,6 +50,7 @@
 - `NarrowingAssignment`: values that may not fit in the assigned variable (#73)
 - `MixedTypeArithmetic`: arithmetic on operands of different numeric types (#74)
 - `PLCOpen-CP8`: detect comparisons of REAL/LREAL variables and expressions, including nested ones (#72)
+- `PLCOpen-CP28`: detect comparisons of TIME, TOD and DT variables and expressions, including timer outputs and nested comparisons
 
 ## 0.4.0 (2022-02-26)
 

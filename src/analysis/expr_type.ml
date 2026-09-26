@@ -69,6 +69,20 @@ let rec named_spec env depth name =
     named_spec env (depth + 1) n
   | spec -> spec
 
+(** Members of the standard function blocks. *)
+let std_fb_member ty m =
+  let open S in
+  let t = match ty, m with
+    | ("TON" | "TOF" | "TP"), ("IN" | "Q") -> Some BOOL
+    | ("TON" | "TOF" | "TP"), ("PT" | "ET") -> Some TIME
+    | ("CTU" | "CTD" | "CTUD"), ("PV" | "CV") -> Some INT
+    | ("CTU" | "CTD" | "CTUD"), ("CU" | "CD" | "R" | "LD" | "Q" | "QU" | "QD") -> Some BOOL
+    | ("R_TRIG" | "F_TRIG"), ("CLK" | "Q") -> Some BOOL
+    | ("SR" | "RS"), ("S1" | "R" | "S" | "R1" | "Q1") -> Some BOOL
+    | _ -> None
+  in
+  Option.map t ~f:(fun t -> DTyDeclSingleElement (DTySpecElementary t, None))
+
 (** Type of the member [m] of a value declared with [spec]. *)
 let member_spec env spec m =
   match spec with
@@ -80,7 +94,7 @@ let member_spec env spec m =
       | None, Some (S.DTyDeclStructType (_, elems)) ->
         List.find elems ~f:(fun (e : S.struct_elem_spec) -> String.equal e.struct_elem_name m)
         |> Option.map ~f:(fun (e : S.struct_elem_spec) -> S.DTyDeclSingleElement (e.struct_elem_ty, None))
-      | _ -> None
+      | None, _ -> std_fb_member ty m
     end
   | _ -> None
 (* }}} *)

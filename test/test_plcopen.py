@@ -113,7 +113,9 @@ def test_cp28():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP28')) == 4
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN CP-28' in line]
+    assert sorted(w.linenr for w in filter_warns(checker_warnings, 'PLCOPEN-CP28')) == expected
     with DumpManager(fdump):
         pass
 
