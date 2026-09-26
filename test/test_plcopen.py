@@ -502,3 +502,17 @@ def test_cp17_struct_members():
         pass
     assert [(w.linenr, w.msg) for w in filter_warns(warns, 'PLCOPEN-CP17')] == [
         (5, "Input parameter 'OTHER' of function block F should not be written")]
+
+
+def test_cp13_indirect():
+    """Recursion through other POUs, FB instances and call arguments."""
+    f = 'st/plcopen-cp13-indirect.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* CP13 *)' in line]
+    ws = filter_warns(warns, 'PLCOPEN-CP13')
+    assert sorted(w.linenr for w in ws) == expected
+    assert ws[0].msg.endswith('FA calls itself through FB_')
