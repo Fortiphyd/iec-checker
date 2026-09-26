@@ -479,3 +479,14 @@ def test_n5_scopes():
     with open(f) as fp:
         expected = [i for i, line in enumerate(fp, 1) if '(* N5 *)' in line]
     assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-N5')) == expected
+
+
+def test_cp17_struct_members():
+    """Accessing a member reads or writes the parameter."""
+    f = 'st/plcopen-cp17-members.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert [(w.linenr, w.msg) for w in filter_warns(warns, 'PLCOPEN-CP17')] == [
+        (5, "Input parameter 'OTHER' of function block F should not be written")]

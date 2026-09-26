@@ -12,7 +12,9 @@ let rec collect_expr ~in_lhs (reads, writes) e =
   (* in_lhs: Whether the expression is in the left-hand side of an assignment *)
   match e with
   | S.ExprVariable (_, vu) ->
-    let name = S.VarUse.get_name vu in
+    (* Accessing a member reads or writes the parameter. *)
+    let full = S.VarUse.get_name vu in
+    let name = Option.value_map (String.lsplit2 full ~on:'.') ~default:full ~f:fst in
     let acc = if in_lhs then (reads, name :: writes) else (name :: reads, writes) in
     (* Variables in array subscripts are read, even on the left-hand side. *)
     List.fold (S.index_exprs vu) ~init:acc ~f:(collect_expr ~in_lhs:false)
