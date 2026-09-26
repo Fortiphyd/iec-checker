@@ -11,7 +11,7 @@ let get_ty_size = function
   | S.CHAR len -> len
   | S.WCHAR len -> len * 2
   | S.TIME -> 8
-  | S.LTIME -> 16
+  | S.LTIME -> 8
   | S.SINT -> 1
   | S.INT -> 2
   | S.DINT -> 4
@@ -23,14 +23,14 @@ let get_ty_size = function
   | S.REAL -> 4
   | S.LREAL -> 8
   | S.DATE -> 8
-  | S.LDATE -> 16
+  | S.LDATE -> 8
   | S.TIME_OF_DAY -> 8
   | S.TOD -> 8
-  | S.LTOD -> 16
-  | S.DATE_AND_TIME -> 16
-  | S.LDATE_AND_TIME -> 16
+  | S.LTOD -> 8
+  | S.DATE_AND_TIME -> 8 (* same as DT *)
+  | S.LDATE_AND_TIME -> 8
   | S.DT -> 8
-  | S.LDT -> 16
+  | S.LDT -> 8
   | S.BOOL -> 1
   | S.BYTE -> 1
   | S.WORD -> 2

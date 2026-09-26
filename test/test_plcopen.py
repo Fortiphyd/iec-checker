@@ -516,3 +516,14 @@ def test_cp13_indirect():
     ws = filter_warns(warns, 'PLCOPEN-CP13')
     assert sorted(w.linenr for w in ws) == expected
     assert ws[0].msg.endswith('FA calls itself through FB_')
+
+
+def test_cp4_64_bit_types():
+    """LTIME, LDT and DATE_AND_TIME are 8 bytes; the next address after them
+    doesn't overlap."""
+    f = 'st/plcopen-cp4-sizes.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert filter_warns(warns, 'PLCOPEN-CP4') == []
