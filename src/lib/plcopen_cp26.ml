@@ -4,68 +4,65 @@ open IECCheckerCore
 module S = Syntax
 module AU = Ast_util
 
-(** Collect the names of VAR_EXTERNAL variables declared in an element. *)
-let get_external_var_names elem =
-  AU.get_var_decls elem
-  |> List.filter_map ~f:(fun vd ->
-      match S.VarDecl.get_attr vd with
-      | Some (S.VarDecl.VarExternal _) -> Some (S.VarDecl.get_var_name vd)
-      | _ -> None)
-  |> Set.of_list (module String)
+module PM = IECCheckerAnalysis.Program_model
 
-(** Find all assignment expressions targeting one of [ext_vars].
-    Returns a list of (var_name, tok_info) pairs. *)
-let find_external_writes elem ext_vars =
-  AU.get_pou_exprs elem
-  |> List.filter_map ~f:(fun expr ->
-      match expr with
-      | S.ExprBin (ti, S.ExprVariable (_, vu), op, _)
-        when (phys_equal op S.ASSIGN || phys_equal op S.ASSIGN_REF)
-             && Set.mem ext_vars (S.VarUse.get_name vu) ->
-        Some (S.VarUse.get_name vu, ti)
-      | _ -> None)
-
-(** For each PROGRAM, collect (var_name, prog_name, ti) triples for every
-    write to a VAR_EXTERNAL variable. *)
-let collect_all_writes elems =
-  List.concat_map elems ~f:(fun elem ->
-      match elem with
-      | S.IECProgram (_, p) ->
-        let ext_vars = get_external_var_names elem in
-        find_external_writes elem ext_vars
-        |> List.map ~f:(fun (var_name, ti) -> (var_name, p.name, ti))
+(** Names of the global variables declared in configurations and resources. *)
+let declared_globals elems =
+  List.concat_map elems ~f:(function
+      | S.IECConfiguration (_, c) ->
+        c.variables @ List.concat_map c.resources ~f:(fun (r : S.resource_decl) -> r.variables)
       | _ -> [])
+  |> List.map ~f:S.VarDecl.get_var_name
+  |> String.Set.of_list
+
+(** For each PROGRAM, in order, its writes to global variables, including
+    those of the function blocks and functions it calls. *)
+let program_writes elems =
+  let effects = PM.effects elems in
+  let globals = declared_globals elems in
+  List.filter_map elems ~f:(function
+      | S.IECProgram (_, p) ->
+        let writes =
+          List.filter_map (effects p.name).writes ~f:(fun (w : PM.access) ->
+              match w.target with
+              | PM.Global (n, is_ext) when is_ext || Set.mem globals n -> Some (n, w)
+              | _ -> None)
+        in
+        Some (p.name, writes)
+      | _ -> None)
 
 let do_check elems =
-  let all_writes = collect_all_writes elems in
-  (* Group by var_name, preserving insertion order. *)
-  let groups =
-    List.fold all_writes ~init:(Map.empty (module String))
-      ~f:(fun map (var_name, prog_name, ti) ->
-          Map.update map var_name ~f:(function
-              | None -> [(prog_name, ti)]
-              | Some ws -> ws @ [(prog_name, ti)]))
-  in
-  (* For each global written by more than one PROGRAM, flag all writes
-     except those from the first writing PROGRAM. *)
-  Map.fold groups ~init:[] ~f:(fun ~key:var_name ~data:writes acc ->
-      let writing_progs =
-        List.map writes ~f:fst
-        |> List.dedup_and_sort ~compare:String.compare
-      in
-      if List.length writing_progs <= 1 then acc
-      else
-        let first_prog = fst (List.hd_exn writes) in
-        List.fold writes ~init:acc ~f:(fun acc (prog_name, ti) ->
-            if String.equal prog_name first_prog then acc
-            else
+  let writes = program_writes elems in
+  let by_global = String.Table.create () in
+  List.iter writes ~f:(fun (prog, ws) ->
+      List.iter ws ~f:(fun (n, w) -> Hashtbl.add_multi by_global ~key:n ~data:(prog, w)));
+  let seen = String.Hash_set.create () in
+  Hashtbl.to_alist by_global
+  |> List.concat_map ~f:(fun (var_name, entries) ->
+      let entries = List.rev entries in
+      match entries with
+      | [] -> []
+      | (first_prog, _) :: _ ->
+        (* Flag the writes of every PROGRAM but the first one writing it. *)
+        List.filter_map entries ~f:(fun (prog, (w : PM.access)) ->
+            let key = Printf.sprintf "%s:%d:%d" var_name w.ti.linenr w.ti.col in
+            if String.equal prog first_prog || Hash_set.mem seen key then None
+            else begin
+              Hash_set.add seen key;
+              let through =
+                if String.equal w.pou prog then ""
+                else Printf.sprintf ", written here for '%s'" prog
+              in
               let msg =
                 Printf.sprintf
-                  "Global variable '%s' should be written by only one \
-                   PROGRAM (already written in '%s')"
-                  var_name first_prog
+                  "Global variable '%s' should be written by only one PROGRAM \
+                   (already written in '%s'%s)"
+                  var_name first_prog through
               in
-              acc @ [Warn.mk_at ti "PLCOPEN-CP26" msg]))
+              Some (Warn.mk_at w.ti "PLCOPEN-CP26" msg)
+            end))
+  |> List.sort ~compare:(fun (a : Warn.t) (b : Warn.t) ->
+      Tuple2.compare ~cmp1:Int.compare ~cmp2:Int.compare (a.linenr, a.column) (b.linenr, b.column))
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP26";

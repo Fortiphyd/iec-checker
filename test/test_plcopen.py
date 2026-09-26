@@ -398,3 +398,34 @@ def test_cp9_names_the_pou():
     ws = filter_warns(warns, 'PLCOPEN-CP9')
     assert ws and all(w.linenr > 0 and w.msg.startswith('CHARCURVE is too complex') for w in ws)
 # }}}
+
+
+def test_cross_pou():
+    """Rules about the whole application, checked across programs of one task
+    and the function blocks they call."""
+    f = 'st/cross-pou.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    ids = ('PLCOPEN-CP1', 'PLCOPEN-CP4', 'PLCOPEN-CP12', 'PLCOPEN-CP20', 'PLCOPEN-CP26')
+    actual = sorted((w.id, w.linenr) for w in warns if w.id in ids)
+    assert actual == sorted([
+        # %MW600 is the global HEAD: written and read by address.
+        ('PLCOPEN-CP1', 49), ('PLCOPEN-CP1', 50),
+        # Located at the same output or memory in different POUs and globals;
+        # the input %IX0.0 shared by both programs is fine.
+        ('PLCOPEN-CP4', 11), ('PLCOPEN-CP4', 33), ('PLCOPEN-CP4', 34),
+        ('PLCOPEN-CP4', 60), ('PLCOPEN-CP4', 61),
+        # %QX0.0 and gOut written by both programs of the task, gOut also in
+        # the FB P1 calls after writing it.
+        ('PLCOPEN-CP12', 25), ('PLCOPEN-CP12', 51), ('PLCOPEN-CP12', 67),
+        # The global instance gT called by both programs and by the FB; the
+        # CTU called in a loop is an exception of the rule.
+        ('PLCOPEN-CP20', 27), ('PLCOPEN-CP20', 51), ('PLCOPEN-CP20', 68),
+        ('PLCOPEN-CP20', 71),
+        # Written by both programs: through the FB, a struct member and an
+        # output parameter.
+        ('PLCOPEN-CP26', 25), ('PLCOPEN-CP26', 26), ('PLCOPEN-CP26', 69),
+        ('PLCOPEN-CP26', 70),
+    ])

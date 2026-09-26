@@ -178,6 +178,8 @@ let get_var_uses elem =
   let rec get_vars = function
     | S.ExprVariable (_, vu) -> [vu]
     | S.ExprConstant _ -> []
+    (* The parser puts the target of an output parameter on both sides. *)
+    | S.ExprBin (_, _, S.SENDTO, rhs) -> get_vars rhs
     | S.ExprBin (_, lhs, _, rhs) -> (get_vars lhs) @ (get_vars rhs)
     | S.ExprUn (_, _, e) -> get_vars e
     (* Call arguments are returned separately by [get_pou_exprs]. *)
