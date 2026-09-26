@@ -183,7 +183,13 @@ def test_cp16():
     warns, rc = run_checker([f])
     assert rc == 0
     cp16_warns = filter_warns(warns, 'PLCOPEN-CP16')
-    assert len(cp16_warns) == 1
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* CP16 *)' in line]
+    assert sorted(w.linenr for w in cp16_warns) == expected
+    msgs = {w.linenr: w.msg for w in cp16_warns}
+    assert msgs[36] == "Task FAST should call PROGRAM, not FUNCTION 'MYFUN'"
+    assert msgs[46] == ("Task SLOW_1 should call PROGRAM, not FUNCTION_BLOCK instance "
+                        "'FB1' of program P2")
     with DumpManager(fdump):
         pass
 
