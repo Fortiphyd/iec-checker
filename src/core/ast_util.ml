@@ -155,7 +155,7 @@ let rec get_stmt_exprs stmt =
   | S.StmExit _ | S.StmContinue _ | S.StmReturn _ -> []
   | S.StmEmpty _ -> []
 
-let get_pou_exprs elem =
+let get_stmts_exprs stmts =
   (* Statements are visited once from the top level: [get_stmt_exprs] already
      descends into nested bodies. Arguments of function calls and array
      subscripts are added as separate expressions. *)
@@ -170,9 +170,10 @@ let get_pou_exprs elem =
       ~f:(fun s -> List.concat_map (get_stmt_exprs s) ~f:with_nested)
     @ List.concat_map (subscripts e) ~f:with_nested
   in
-  get_top_stmts elem
-  |> List.concat_map ~f:get_stmt_exprs
+  List.concat_map stmts ~f:get_stmt_exprs
   |> List.concat_map ~f:with_nested
+
+let get_pou_exprs elem = get_stmts_exprs (get_top_stmts elem)
 
 let get_var_uses elem =
   let rec get_vars = function

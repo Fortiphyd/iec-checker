@@ -230,7 +230,15 @@ def test_l22():
     warns, rc = run_checker([f])
     assert rc == 0
     l22_warns = filter_warns(warns, 'PLCOPEN-L22')
-    assert len(l22_warns) == 3
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* L22 *)' in line]
+    assert sorted(w.linenr for w in l22_warns) == expected
+    msgs = {w.linenr: w.msg for w in l22_warns}
+    assert msgs[61] == ("Loop variable 'I' should not be modified inside a FOR loop "
+                        "(passed to VAR_IN_OUT POS of ST)")
+    assert msgs[64].endswith('(by output NEXT of ST)')
+    assert msgs[72] == ("Variable 'N' of the final value or increment of a FOR loop "
+                        "should not be modified inside the loop")
     with DumpManager(fdump):
         pass
 
