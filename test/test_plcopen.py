@@ -441,3 +441,16 @@ def test_cross_pou():
         ('PLCOPEN-CP26', 25), ('PLCOPEN-CP26', 26), ('PLCOPEN-CP26', 69),
         ('PLCOPEN-CP26', 70),
     ])
+
+
+def test_n5_scopes():
+    """VAR_EXTERNAL refers to the global; resource globals and tasks are
+    global names too."""
+    f = 'st/plcopen-n5-scopes.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* N5 *)' in line]
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-N5')) == expected
