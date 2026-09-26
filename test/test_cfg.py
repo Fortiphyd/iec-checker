@@ -5,7 +5,7 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "../src"))
-from python.core import check_program  # noqa
+from python.core import check_program, run_checker, filter_warns  # noqa
 from python.dump import DumpManager  # noqa
 
 
@@ -868,3 +868,18 @@ def test_cfg_exit_continue():
         assert bbs[7].type == "BBExit"
         assert bbs[7].preds == {0, 2}
         assert bbs[7].succs == set()
+
+
+def test_repeat_body_with_several_exits():
+    """A REPEAT body ending with IF or CASE used to crash CFG construction."""
+    f = 'st/good/repeat-body-exits.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    assert not [w for w in warns if w.id in ('UnknownError', 'InternalError')]
+    # The analysis ran: the IFs without ELSE are reported.
+    assert filter_warns(warns, 'PLCOPEN-L17')
+    # Code after the loops is reachable.
+    assert not filter_warns(warns, 'PLCOPEN-CP2')
+    with DumpManager(fdump):
+        pass
