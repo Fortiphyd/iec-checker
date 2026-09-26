@@ -6,194 +6,70 @@ module Warn = IECCheckerCore.Warn
 
 (** Keywords / reserved word list of IEC 61131-3 Ed.3 starting with a letter *)
 let reserved_keywords =
-  [
-    "ABS";
-    "END_IF";
-    "ABSTRACT";
-    "END_INTERFACE LEFT";
-    "ACOS";
-    "END_METHOD";
-    "LEN";
-    "ACTION";
-    "END_NAMESPACE LIMIT";
-    "ADD";
-    "END_PROGRAM";
-    "LINT";
-    "AND";
-    "END_REPEAT";
-    "LN";
-    "ARRAY";
-    "END_RESOURCE LOG";
-    "ASIN";
-    "END_STEP";
-    "LREAL";
-    "AT";
-    "END_STRUCT";
-    "LT";
-    "ATAN";
-    "END_TRANSITION LTIME";
-    "ATAN2";
-    "END_TYPE";
-    "LTIME_OF_DAY";
-    "BOOL";
-    "END_VAR";
-    "LTOD";
-    "BY";
-    "END_WHILE";
-    "LWORD";
-    "BYTE";
-    "EQ";
-    "MAX";
-    "CASE";
-    "EXIT";
-    "METHOD";
-    "CHAR";
-    "EXP";
-    "MID";
-    "CLASS";
-    "EXPT";
-    "MIN";
-    "CONCAT";
-    "EXTENDS";
-    "MOD";
-    "CONFIGURATION";
-    "F_EDGE";
-    "MOVE";
-    "CONSTANT";
-    "F_TRIG";
-    "MUL";
-    "CONTINUE";
-    "FALSE";
-    "MUX";
-    "COS";
-    "FINAL";
-    "NAMESPACE";
-    "CTD";
-    "FIND";
-    "NE";
-    "CTU";
-    "FOR";
-    "NON_RETAIN";
-    "CTUD";
-    "FROM";
-    "NOT";
-    "DATE";
-    "FUNCTION";
-    "NULL";
-    "DATE_AND_TIME";
-    "FUNCTION_BLOCK OF";
-    "DELETE";
-    "GE";
-    "ON";
-    "DINT";
-    "GT";
-    "OR";
-    "DIV";
-    "IF";
-    "OVERLAP";
-    "DO";
-    "IMPLEMENTS";
-    "OVERRIDE";
-    "DT";
-    "INITIAL_STEP";
-    "PRIORITY";
-    "DWORD";
-    "INSERT";
-    "PRIVATE";
-    "ELSE";
-    "INT";
-    "PROGRAM";
-    "ELSIF";
-    "INTERFACE";
-    "PROTECTED";
-    "END_ACTION";
-    "INTERNAL";
-    "PUBLIC";
-    "END_CASE";
-    "INTERVAL";
-    "R_EDGE";
-    "END_CLASS";
-    "LD";
-    "R_TRIG";
-    "END_CONFIGURATION LDATE";
-    "READ_ONLY";
-    "END_FOR";
-    "LDATE_AND_TIME READ_WRITE";
-    "END_FUNCTION";
-    "LDT";
-    "REAL";
-    "END_FUNCTION_BLOCK LE";
-    "REF";
-    "REF_TO";
-    "REPEAT";
-    "REPLACE";
-    "RESOURCE";
-    "RETAIN";
-    "RETURN";
-    "RIGHT";
-    "ROL";
-    "ROR";
-    "RS";
-    "SEL";
-    "SHL";
-    "SHR";
-    "SIN";
-    "SINGLE";
-    "SINT";
-    "SQRT";
-    "SR";
-    "STEP";
-    "STRING";
-    "STRING#";
-    "STRUCT";
-    "SUB";
-    "SUPER";
-    "T";
-    "TAN";
-    "TASK";
-    "THEN";
-    "THIS";
-    "THIS";
-    "TIME";
-    "TIME_OF_DAY";
-    "TO";
-    "TOD";
-    "TOF";
-    "TON";
-    "TP";
-    "TRANSITION";
-    "TRUE";
-    "TRUNC";
-    "TYPE";
-    "UDINT";
+  String.Set.of_list [
+    "ABS"; "ABSTRACT"; "ACOS"; "ACTION"; "ADD"; "AND"; "ARRAY"; "ASIN"; "AT";
+    "ATAN"; "ATAN2"; "BOOL"; "BY"; "BYTE"; "CASE"; "CHAR"; "CLASS"; "CONCAT";
+    "CONFIGURATION"; "CONSTANT"; "CONTINUE"; "COS"; "CTD"; "CTU"; "CTUD"; "DATE";
+    "DATE_AND_TIME"; "DELETE"; "DINT"; "DIV"; "DO"; "DT"; "DWORD"; "ELSE"; "ELSIF";
+    "END_ACTION"; "END_CASE"; "END_CLASS"; "END_CONFIGURATION"; "END_FOR"; "END_FUNCTION";
+    "END_FUNCTION_BLOCK"; "END_IF"; "END_INTERFACE"; "END_METHOD"; "END_NAMESPACE";
+    "END_PROGRAM"; "END_REPEAT"; "END_RESOURCE"; "END_STEP"; "END_STRUCT"; "END_TRANSITION";
+    "END_TYPE"; "END_VAR"; "END_WHILE"; "EQ"; "EXIT"; "EXP"; "EXPT"; "EXTENDS";
+    "F_EDGE"; "F_TRIG"; "FALSE"; "FINAL"; "FIND"; "FOR"; "FROM"; "FUNCTION";
+    "FUNCTION_BLOCK"; "GE"; "GT"; "IF"; "IMPLEMENTS"; "INITIAL_STEP"; "INSERT";
+    "INT"; "INTERFACE"; "INTERNAL"; "INTERVAL"; "LD"; "LDATE"; "LDATE_AND_TIME";
+    "LDT"; "LE"; "LEFT"; "LEN"; "LIMIT"; "LINT"; "LN"; "LOG"; "LREAL"; "LT";
+    "LTIME"; "LTIME_OF_DAY"; "LTOD"; "LWORD"; "MAX"; "METHOD"; "MID"; "MIN";
+    "MOD"; "MOVE"; "MUL"; "MUX"; "NAMESPACE"; "NE"; "NON_RETAIN"; "NOT"; "NULL";
+    "OF"; "ON"; "OR"; "OVERLAP"; "OVERRIDE"; "PRIORITY"; "PRIVATE"; "PROGRAM";
+    "PROTECTED"; "PUBLIC"; "R_EDGE"; "R_TRIG"; "READ_ONLY"; "READ_WRITE"; "REAL";
+    "REF"; "REF_TO"; "REPEAT"; "REPLACE"; "RESOURCE"; "RETAIN"; "RETURN"; "RIGHT";
+    "ROL"; "ROR"; "RS"; "SEL"; "SHL"; "SHR"; "SIN"; "SINGLE"; "SINT"; "SQRT";
+    "SR"; "STEP"; "STRING"; "STRUCT"; "SUB"; "SUPER"; "T"; "TAN"; "TASK"; "THEN";
+    "THIS"; "TIME"; "TIME_OF_DAY"; "TO"; "TOD"; "TOF"; "TON"; "TP"; "TRANSITION";
+    "TRUE"; "TRUNC"; "TYPE"; "UDINT"; "UINT"; "ULINT"; "UNTIL"; "USING"; "USINT";
+    "VAR"; "VAR_ACCESS"; "VAR_CONFIG"; "VAR_EXTERNAL"; "VAR_GLOBAL"; "VAR_IN_OUT";
+    "VAR_INPUT"; "VAR_OUTPUT"; "VAR_TEMP"; "WCHAR"; "WHILE"; "WITH"; "WORD";
+    "WSTRING"; "XOR";
   ]
 
-let check_name var =
-  let name = S.VarUse.get_name var in
-  let ti = S.VarUse.get_ti var in
-  let m = List.find reserved_keywords ~f:(fun k -> String.equal name k) in
-  match m with
-  | Some _ ->
-    let msg = "IEC data types and standard library objects must be avoided" in
-    let w = Warn.mk_at ti "PLCOPEN-N3" msg in
-    Some w
-  | None -> None
+let reserved name = Set.mem reserved_keywords (String.uppercase name)
 
-let do_check elems =
-  let vardecls = List.fold_left
-      elems
-      ~init:[]
-      ~f:(fun acc elem -> acc @ (AU.get_var_decls elem))
+let warn (ti : TI.t) what name =
+  Warn.mk_at ti "PLCOPEN-N3"
+    (Printf.sprintf "%s %s is a reserved word of IEC 61131-3 and should be avoided" what name)
+
+(** Names of the members of a type: enum values and struct elements. *)
+let member_names = function
+  | S.DTyDeclEnumType (_, elems, _) ->
+    List.map elems ~f:(fun (e : S.enum_element_spec) -> ("Enum value", e.elem_name))
+  | S.DTyDeclStructType (_, elems) ->
+    List.map elems ~f:(fun (e : S.struct_elem_spec) -> ("Struct member", e.struct_elem_name))
+  | _ -> []
+
+let check_elem elem =
+  let vars =
+    AU.get_var_decls elem
+    |> List.filter_map ~f:(fun d ->
+        let name = S.VarDecl.get_var_name d in
+        Option.some_if (reserved name) (warn (S.VarDecl.get_var_ti d) "Variable" name))
   in
-  List.map
-    vardecls
-    ~f:(fun d -> begin
-          let var = S.VarDecl.get_var d in
-          check_name var
-        end)
-  |> List.filter ~f:(fun w -> match w with Some _ -> true | None -> false)
-  |> List.map ~f:(fun w ->
-      match w with Some w -> w | None -> assert false)
+  let own =
+    match elem, S.get_pou_name_as_written elem with
+    | S.IECConfiguration _, _ | _, None -> []
+    | _, Some (name, ti) ->
+      let what = match elem with S.IECType _ -> "Type" | _ -> "POU" in
+      (if reserved name then [warn ti what name] else [])
+      @ (match elem with
+          | S.IECType (_, _, (_, spec)) ->
+            (* Members have no position of their own; report them at the type. *)
+            List.filter_map (member_names spec) ~f:(fun (what, member) ->
+                Option.some_if (reserved member) (warn ti what member))
+          | _ -> [])
+  in
+  own @ vars
+
+let do_check elems = List.concat_map elems ~f:check_elem
 
 let detector : Detector.t = {
   id = "PLCOPEN-N3";

@@ -1,8 +1,8 @@
 PROGRAM program0
   VAR
-    FOR_B : INT; (* PLCOPEN-N3 *)
+    FOR_B : INT; (* starts with a keyword, but isn't one *)
     NO_FALSE_POSITIVE : INT;
-    IF_A : INT; (* PLCOPEN-N3 *)
+    IF_A : INT;
     TOF : INT; (* PLCOPEN-N3 *)
     OK_ALLOWED : INT;
   END_VAR

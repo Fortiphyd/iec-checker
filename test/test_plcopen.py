@@ -241,9 +241,21 @@ def test_n3():
     checker_warnings, rc = run_checker([f])
     assert rc == 0
     n3_warns = filter_warns(checker_warnings, 'PLCOPEN-N3')
-    assert any(w.linenr == 6 and w.column == 7 for w in n3_warns)
+    assert [(w.linenr, w.column) for w in n3_warns] == [(6, 7)]
     with DumpManager(fdump):
         pass
+
+
+def test_n3_names():
+    """Reserved words are avoided in all names, not only variables."""
+    f = 'st/plcopen-n3-names.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    names = sorted(w.msg.split(' is a reserved word')[0].split()[-1]
+                   for w in filter_warns(warns, 'PLCOPEN-N3'))
+    assert names == sorted(['MAX', 'TP', 'SEL', 'LEFT', 'LIMIT', 'LOG', 'LE', 'LEN', 'CTUD'])
 
 
 def test_cp9():
