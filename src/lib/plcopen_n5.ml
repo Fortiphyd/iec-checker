@@ -26,7 +26,7 @@ let check_elem globals elem =
           let msg = Printf.sprintf
               "Local name %s shadows a global variable" name
           in
-          Some (Warn.mk ti.linenr ti.col "PLCOPEN-N5" msg)
+          Some (Warn.mk_at ti "PLCOPEN-N5" msg)
         else None)
 
 let do_check elems =
@@ -41,5 +41,6 @@ let detector : Detector.t = {
     "Local variable declarations must not reuse a name already declared at \
      global scope.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N5";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

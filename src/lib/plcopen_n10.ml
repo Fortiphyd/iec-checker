@@ -11,7 +11,7 @@ let check_prefix prefixes kind name linenr col =
     let msg = Printf.sprintf
         "%s %s should start with prefix %S" kind name prefix
     in
-    Some (Warn.mk linenr col "PLCOPEN-N10" msg)
+    Some (Warn.mk_for_name ~name linenr col "PLCOPEN-N10" msg)
 
 let check_elem prefixes = function
   | S.IECType (_, (name, spec)) ->
@@ -36,5 +36,6 @@ let detector : Detector.t = {
     "User-defined types and function blocks should start with a configurable \
      prefix based on their kind.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N10";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

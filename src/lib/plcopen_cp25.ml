@@ -20,7 +20,7 @@ let check_assign_expr (ti : TI.t) lhs rhs env =
     match (S.VarDecl.get_ty_spec lhs_decl, S.VarDecl.get_ty_spec rhs_decl) with
     | (Some(lhs_ty),Some(rhs_ty)) -> begin
         if not (types_can_be_casted lhs_ty rhs_ty) then
-          Some(Warn.mk ti.linenr ti.col "PLCOPEN-CP25" "Data type conversion should be explicit.")
+          Some(Warn.mk_at ti "PLCOPEN-CP25" "Data type conversion should be explicit.")
         else
           None
       end
@@ -64,5 +64,6 @@ let detector : Detector.t = {
   summary =
     "Implicit casts between integer and floating-point types are forbidden.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP25";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements i.envs);
 }

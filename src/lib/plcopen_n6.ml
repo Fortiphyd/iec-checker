@@ -11,13 +11,13 @@ let check_length ~min_len ~max_len name linenr col =
         "Identifier %s is too short (%d chars, minimum %d)"
         name len min_len
     in
-    Some (Warn.mk linenr col "PLCOPEN-N6" msg)
+    Some (Warn.mk_for_name ~name linenr col "PLCOPEN-N6" msg)
   else if max_len > 0 && len > max_len then
     let msg = Printf.sprintf
         "Identifier %s is too long (%d chars, maximum %d)"
         name len max_len
     in
-    Some (Warn.mk linenr col "PLCOPEN-N6" msg)
+    Some (Warn.mk_for_name ~name linenr col "PLCOPEN-N6" msg)
   else None
 
 let pou_name_and_loc = function
@@ -63,5 +63,6 @@ let detector : Detector.t = {
     "Identifiers shorter than the configured minimum or longer than the \
      configured maximum should be renamed.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N6";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

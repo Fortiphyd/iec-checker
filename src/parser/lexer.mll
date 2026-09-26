@@ -190,7 +190,10 @@ let fix_point_ms = (integer | (integer '.' integer)) ("ms" | "MS")
 let fix_point_us = (integer | (integer '.' integer)) ("us" | "US")
 let fix_point_ns = (integer | (integer '.' integer)) ("ns" | "NS")
 
-let label = '_'? (letter | letter ['A'-'Z' 'a'-'z' '0'-'9' '_' '.']*)
+(* Dots join the parts of struct member accesses; one not followed by a name
+   character is a separate token, as in bit access [x.%X3] or range [lo..hi]. *)
+let label_char = ['A'-'Z' 'a'-'z' '0'-'9' '_']
+let label = '_'? letter (label_char | '.' label_char)*
 
 rule initial tokinfo =
   parse
@@ -396,7 +399,19 @@ rule initial tokinfo =
   (* {{{ Misc. *)
   | "(*"             { comment tokinfo 1 lexbuf }
   | "//"             { singleline_comment tokinfo lexbuf }
-  | "%"              { let ti = tokinfo lexbuf in direct_variable (Syntax.DirVar.create ti) ti lexbuf }
+  | "%"
+  {
+    let ti = tokinfo lexbuf in
+    let start_pos = lexbuf.lex_start_pos and start_p = lexbuf.lex_start_p in
+    let tok = direct_variable (Syntax.DirVar.create ti) ti lexbuf in
+    (* [direct_variable] matches the address piece by piece; make the lexeme
+       and the position of the variable span all of it. *)
+    lexbuf.lex_start_pos <- start_pos;
+    lexbuf.lex_start_p <- start_p;
+    match tok with
+    | T_DIR_VAR var -> T_DIR_VAR (Syntax.DirVar.set_ti var (tokinfo lexbuf))
+    | tok -> tok
+  }
   | "STRING#" '\''   { let ti = tokinfo lexbuf in sstring_literal (Buffer.create 19) ti lexbuf }
   | '\''             { let ti = tokinfo lexbuf in sstring_literal (Buffer.create 19) ti lexbuf }
   | "STRING#" '"'    { let ti = tokinfo lexbuf in dstring_literal (Buffer.create 19) ti lexbuf }

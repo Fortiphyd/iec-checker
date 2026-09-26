@@ -9,7 +9,7 @@ let check_stmt = function
       match else_exprs with
       | [] ->
         let msg = "Each IF instruction should have an ELSE clause" in
-        let w = Warn.mk ti.linenr ti.col "PLCOPEN-L17" msg in
+        let w = Warn.mk_at ti "PLCOPEN-L17" msg in
         Some w
       | _ -> None )
   | _ -> None
@@ -26,5 +26,6 @@ let detector : Detector.t = {
   name = "Each IF instruction should have an ELSE clause";
   summary = "Every [IF] should explicitly handle the [ELSE] case.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-L17";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

@@ -10,8 +10,11 @@ type t = {
   mccabe_complexity  : int;
   statements_count   : int;
   max_string_length  : int;
+  duplicate_code_size : int;
+  (** Minimum size of duplicated code to report, in syntax tree nodes *)
   output_format      : string;
   use_color          : bool;
+  min_severity       : string; (** Hide warnings below: "low", "medium" or "high" *)
   input_format       : string;
   merge              : bool;
   exclude_paths      : string list;
@@ -49,6 +52,9 @@ val mccabe_complexity_threshold : unit -> int
 
 val statements_num_threshold : unit -> int
 (** Threshold of maximum number of statements in POU to generate warnings. *)
+
+val duplicate_code_size : unit -> int
+(** Minimum size of duplicated code to report, in syntax tree nodes. *)
 
 (** {2 Config file I/O} *)
 

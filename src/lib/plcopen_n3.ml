@@ -175,7 +175,7 @@ let check_name var =
   match m with
   | Some _ ->
     let msg = "IEC data types and standard library objects must be avoided" in
-    let w = Warn.mk ti.linenr ti.col "PLCOPEN-N3" msg in
+    let w = Warn.mk_at ti "PLCOPEN-N3" msg in
     Some w
   | None -> None
 
@@ -202,5 +202,6 @@ let detector : Detector.t = {
     "Variable names must not collide with IEC 61131-3 keywords or standard \
      library identifiers.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N3";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

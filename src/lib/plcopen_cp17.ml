@@ -138,7 +138,7 @@ let check_pou elem =
           let is_read = Set.mem read_set name in
           let is_written = Set.mem write_set name in
           let mk_warn msg =
-            W.mk ti.linenr ti.col "PLCOPEN-CP17" msg
+            W.mk_at ti "PLCOPEN-CP17" msg
           in
           begin match kind with
             | PInput ->
@@ -176,5 +176,6 @@ let detector : Detector.t = {
   name = "Usage of parameters shall match their declaration mode";
   summary = "Input parameters must be read, output parameters must be written, and in/out parameters must be used.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP17";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

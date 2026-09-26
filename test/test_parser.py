@@ -138,8 +138,55 @@ def test_direct_variables():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    with DumpManager(fdump) as dm:
-        _ = dm.scheme  # TODO
+    with open(fdump, 'r') as fp:
+        scheme = json.load(fp)
+    os.remove(fdump)
+
+    def dir_vars(node):
+        """Yield (location, size, path) of every DirVar in a dump subtree."""
+        if isinstance(node, list):
+            if len(node) == 2 and node[0] == 'DirVar':
+                v = node[1]
+                yield (v['loc'][0], v['sz'][0] if v['sz'] else None, v['path'])
+            for child in node:
+                yield from dir_vars(child)
+        elif isinstance(node, dict):
+            for child in node.values():
+                yield from dir_vars(child)
+
+    stmts = scheme['programs'][0]['statements']
+    assert list(dir_vars(stmts)) == [
+        ('LocQ', 'SizeW', [2]),
+        ('LocM', 'SizeW', [10]),
+        ('LocI', 'SizeW', [215]),
+        ('LocM', 'SizeW', [11]),
+        ('LocQ', 'SizeW', [3]),
+        ('LocI', 'SizeW', [3]),
+        ('LocI', 'SizeX', [1, 0]),
+        ('LocI', 'SizeD', [4]),
+    ]
+
+
+def test_error_on_direct_variable_names_the_token():
+    warns, rc = check_program('PROGRAM p VAR y : %IW2; END_VAR END_PROGRAM')
+    assert rc != 0
+    [w] = [w for w in warns if w.id == 'ParserError']
+    assert w.msg == 'unexpected token `%IW2`'
+
+
+def test_bit_access():
+    f = 'st/good/bit-access.st'
+    fdump = f'{f}.dump.json'
+    _, rc = run_checker([f])
+    assert rc == 0
+    with open(fdump, 'r') as fp:
+        scheme = json.load(fp)
+    os.remove(fdump)
+    # Bit writes are kept as a member of the variable.
+    targets = [s[2][2][2]['loc'][1]['name']
+               for s in scheme['programs'][0]['statements']
+               if s[0] == 'Expression']
+    assert targets == ['Y', 'X.%X0']
 
 
 def test_statements_order():

@@ -40,7 +40,7 @@ let check_pou elem =
     ~f:(fun acc var_name -> begin
           let ti = AU.get_ti_by_name_exn elem var_name in
           let text = Printf.sprintf "Found unused local variable: %s" var_name in
-          acc @ [Warn.mk ti.linenr ti.col "UnusedVariable" text]
+          acc @ [Warn.mk_at ti "UnusedVariable" text]
         end)
 
 let run elements =

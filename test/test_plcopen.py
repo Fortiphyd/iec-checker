@@ -14,7 +14,7 @@ def test_cp1():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP1') == 1
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP1')) == 1
     with DumpManager(fdump):
         pass
 
@@ -24,7 +24,7 @@ def test_cp3():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP3') == 8
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP3')) == 3
     with DumpManager(fdump):
         pass
 
@@ -34,9 +34,47 @@ def test_cp6():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP6') == 2
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP6')) == 3
     with DumpManager(fdump):
         pass
+
+
+def test_cp4():
+    f = 'st/plcopen-cp4.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN-CP4' in line]
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-CP4')) == expected
+
+
+def test_cp12():
+    f = 'st/plcopen-cp12.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN-CP12' in line]
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-CP12')) == expected
+    assert any('written in a loop' in w.msg for w in warns)
+
+
+def test_cp20():
+    f = 'st/plcopen-cp20.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN-CP20' in line]
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-CP20')) == expected
+    assert any('called in a loop' in w.msg for w in warns)
 
 
 def test_cp8():
@@ -44,9 +82,30 @@ def test_cp8():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP8') == 4
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN CP-8' in line]
+    assert sorted(w.linenr for w in filter_warns(checker_warnings, 'PLCOPEN-CP8')) == expected
     with DumpManager(fdump):
         pass
+
+
+def test_no_duplicate_warnings_in_nested_statements():
+    """Expressions nested in statement bodies and function arguments are
+    reported once."""
+    f = 'st/nested-exprs.st'
+    fdump = f'{f}.dump.json'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(fdump):
+        pass
+    ids = ('PLCOPEN-CP8', 'PLCOPEN-CP28', 'PLCOPEN-N1')
+    actual = Counter((w.id, w.linenr) for w in warns if w.id in ids)
+    assert actual == Counter({
+        ('PLCOPEN-CP8', 9): 1,
+        ('PLCOPEN-CP28', 12): 1,
+        ('PLCOPEN-N1', 15): 1,
+        ('PLCOPEN-N1', 17): 1,
+    })
 
 
 def test_cp28():
@@ -54,7 +113,9 @@ def test_cp28():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP28') == 4
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN CP-28' in line]
+    assert sorted(w.linenr for w in filter_warns(checker_warnings, 'PLCOPEN-CP28')) == expected
     with DumpManager(fdump):
         pass
 
@@ -64,7 +125,7 @@ def test_cp13():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP13') == 3
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP13')) == 1
     with DumpManager(fdump):
         pass
 
@@ -74,7 +135,7 @@ def test_cp25():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-CP25') == 2
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP25')) == 2
     with DumpManager(fdump):
         pass
 
@@ -84,7 +145,7 @@ def test_l10():
     fdump = f'{f}.dump.json'
     checker_warnings, rc = run_checker([f])
     assert rc == 0
-    checker_warnings.count('PLCOPEN-L10') == 3
+    assert len(filter_warns(checker_warnings, 'PLCOPEN-L10')) == 3
     with DumpManager(fdump):
         pass
 
@@ -186,7 +247,8 @@ def test_n1():
     fdump = f'{f}.dump.json'
     warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(warns, 'PLCOPEN-N1')) == 1
+    [w] = filter_warns(warns, 'PLCOPEN-N1')
+    assert '%MW10.2.4.1' in w.msg
     with DumpManager(fdump):
         pass
 

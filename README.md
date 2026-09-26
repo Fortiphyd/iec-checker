@@ -19,10 +19,12 @@ PLCOPEN-CP13: POUs shall not call themselves directly or indirectly
 
 ## Features
 
-- 26 [PLCOpen Software Construction Guidelines](https://iec-checker.github.io/docs/detectors/plcopen-overview) checks
+- 28 [PLCOpen Software Construction Guidelines](https://iec-checker.github.io/docs/detectors/plcopen-overview) checks
 - Declaration analysis, unreachable code detection, unused variable detection
 - Structured Text, [PLCOpen XML](https://plcopen.org/technical-activities/xml-exchange), and [SEL XML](https://selinc.com/products/3530/) input formats
 - JSON output for [CI/CD integration](https://iec-checker.github.io/docs/ci-cd) and [Python tooling](https://iec-checker.github.io/docs/python)
+- [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) output (`-o sarif`) for code scanning tools
+- Severity levels (`low`, `medium`, `high`) for every check; hide the less important ones with `--min-severity`
 
 The ST dialect is compatible with the [matiec](https://github.com/sm1820/matiec) compiler. If `iec-checker` chokes on extensions from your PLC vendor, please [open an issue](https://github.com/jubnzv/iec-checker/issues/new).
 

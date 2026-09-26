@@ -12,8 +12,6 @@ import sys
 import os
 import json
 
-import pytest
-
 sys.path.append(os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "../src"))
 from python.core import run_checker, filter_warns  # noqa
@@ -26,18 +24,20 @@ VAR
   level  AT %IW0   : INT;   (* physical input *)
   sp     AT %MW100 : INT;   (* network-writable setpoint *)
   sp_max AT %MW101 : INT;   (* network-writable limit *)
+  start  AT %IX0.0 : BOOL;  (* physical BOOL input *)
   drive  AT %QW0   : INT;   (* output *)
   drive2 AT %QW1   : INT;   (* output *)
+  valve  AT %QX0.0 : BOOL;  (* BOOL output *)
+  u_sp   AT %MW102 : UINT;  (* unsigned network-writable setpoint *)
+  u_drive AT %QW3  : UINT;  (* unsigned output *)
+  u_tmp : UINT;
   tmp  : INT;
   tmp2 : INT;
   alarm : BOOL;
+  i : INT;
+  arr : ARRAY [0..3] OF INT;
 END_VAR
 """
-
-# The current implementation predates the source/sink model.
-pending = pytest.mark.xfail(
-    strict=True, reason='source/sink/sanitizer model not implemented yet')
-
 
 def run_taint(tmp_path, source, args=[]):
     """Run the checker on [source] and return its TaintedVariable warnings."""
@@ -83,33 +83,109 @@ def test_direct_address_sink(tmp_path):
     check_body(tmp_path, f'%QW2 := sp; {MARKER}')
 
 
-@pending
 def test_through_intermediate(tmp_path):
     check_body(tmp_path, f'tmp := sp;\ndrive := tmp; {MARKER}')
 
 
-@pending
 def test_through_chain_of_intermediates(tmp_path):
     check_body(tmp_path, f'tmp := sp;\ntmp2 := tmp + 1;\ndrive := tmp2; {MARKER}')
 
 
-@pending
 def test_network_memory_written_by_program_is_still_untrusted(tmp_path):
     # The network can still write %MW100 even if the program also does.
     check_body(tmp_path,
                f'drive := sp; {MARKER}\nIF alarm THEN\n  sp := 0;\nEND_IF;')
 
 
-@pending
 def test_bound_from_untrusted_source(tmp_path):
     # A limit an attacker can set is not a bounds check.
     check_body(tmp_path, f'drive := LIMIT(0, sp, sp_max); {MARKER}')
 
 
-@pending
 def test_retainted_after_sanitizing(tmp_path):
     check_body(tmp_path,
                f'tmp := LIMIT(0, sp, 1500);\ntmp := sp;\ndrive := tmp; {MARKER}')
+
+
+def test_one_sided_min_is_not_enough(tmp_path):
+    check_body(tmp_path, f'drive := MIN(sp, 1500); {MARKER}')
+
+
+def test_one_sided_max_is_not_enough(tmp_path):
+    check_body(tmp_path, f'drive := MAX(sp, 0); {MARKER}')
+
+
+def test_network_memory_overwritten_earlier_in_scan(tmp_path):
+    # Some PLCs service network writes in the middle of a scan.
+    check_body(tmp_path, f'sp := 0;\ndrive := sp; {MARKER}')
+
+
+def test_no_duplicate_warnings_in_if_body(tmp_path):
+    check_body(tmp_path, f'IF alarm THEN\n  drive := sp; {MARKER}\nEND_IF;')
+
+
+def test_join_after_case(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'CASE i OF',
+        '  1: tmp := sp;',
+        '  2: tmp := 0;',
+        'END_CASE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_loop_carried(tmp_path):
+    # tmp is tainted at the end of one iteration and used in the next.
+    check_body(tmp_path, '\n'.join([
+        'tmp := 0;',
+        'WHILE i < 10 DO',
+        f'  drive := tmp; {MARKER}',
+        '  tmp := sp;',
+        '  i := i + 1;',
+        'END_WHILE;',
+    ]))
+
+
+def test_one_sided_if_guard(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp > 1500 THEN',
+        '  drive := 1500;',
+        'ELSE',
+        f'  drive := sp; {MARKER}',
+        'END_IF;',
+    ]))
+
+
+def test_if_guard_with_untrusted_bound(tmp_path):
+    check_body(tmp_path,
+               f'IF sp >= 0 AND sp <= sp_max THEN\n  drive := sp; {MARKER}\nEND_IF;')
+
+
+def test_if_guard_does_not_extend_past_if(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp >= 0 AND sp <= 1500 THEN',
+        '  tmp := 1;',
+        'END_IF;',
+        f'drive := sp; {MARKER}',
+    ]))
+
+
+def test_if_guard_on_array_element(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'arr[0] := sp;',
+        'IF arr[0] >= 0 AND arr[0] <= 1500 THEN',
+        f'  drive := arr[0]; {MARKER}',
+        'END_IF;',
+    ]))
+
+
+def test_direct_address_source(tmp_path):
+    check_body(tmp_path, f'drive := %IW5 * 2; {MARKER}')
+
+
+def test_direct_address_source_and_sink(tmp_path):
+    [w] = run_taint(tmp_path, f'{DECLS}%QW5 := %MW200;\nEND_PROGRAM\n')
+    assert '%QW5' in w.msg and '%MW200' in w.msg
 
 
 def test_in_function_block(tmp_path):
@@ -138,37 +214,99 @@ def test_trusted_local_to_output(tmp_path):
     check_body(tmp_path, 'tmp := 5;\ndrive := tmp;')
 
 
-@pending
+def test_bool_input(tmp_path):
+    # Bounds checks don't apply to BOOL inputs, so they aren't sources.
+    check_body(tmp_path, 'valve := start AND NOT alarm;')
+
+
+def test_comparison_result(tmp_path):
+    check_body(tmp_path, 'valve := level > 100;')
+
+
+def test_every_case_branch_overwrites(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'CASE i OF',
+        '  1: tmp := 0;',
+        'ELSE',
+        '  tmp := 1;',
+        'END_CASE;',
+        'drive := tmp;',
+    ]))
+
+
+def test_named_limit(tmp_path):
+    check_body(tmp_path, 'drive := LIMIT(MN := 0, IN := sp, MX := 1500);')
+
+
+def test_if_guard_in_else(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp < 0 OR sp > 1500 THEN',
+        '  drive := 0;',
+        'ELSE',
+        '  drive := sp;',
+        'END_IF;',
+    ]))
+
+
+def test_if_guard_reversed_operands(tmp_path):
+    check_body(tmp_path, 'IF 0 <= sp AND 1500 >= sp THEN\n  drive := sp;\nEND_IF;')
+
+
+def test_if_guard_with_not(tmp_path):
+    check_body(tmp_path,
+               'IF NOT (sp < 0) AND NOT (sp > 1500) THEN\n  drive := sp;\nEND_IF;')
+
+
+def test_early_return_guards(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'IF sp < 0 THEN',
+        '  RETURN;',
+        'END_IF;',
+        'IF sp > 1500 THEN',
+        '  RETURN;',
+        'END_IF;',
+        'drive := sp;',
+    ]))
+
+
+def test_direct_address_limit(tmp_path):
+    check_body(tmp_path, '%QW5 := LIMIT(0, %MW200, 1500);')
+
+
+def test_direct_address_if_guard(tmp_path):
+    check_body(tmp_path,
+               'IF %IW5 >= 0 AND %IW5 <= 1500 THEN\n  drive := %IW5;\nEND_IF;')
+
+
+def test_direct_bool_input(tmp_path):
+    check_body(tmp_path, 'valve := %IX1.0;')
+
+
 def test_untrusted_to_non_output(tmp_path):
     check_body(tmp_path, 'tmp := sp;')
 
 
-@pending
 def test_output_is_not_a_source(tmp_path):
     check_body(tmp_path, 'drive := drive2;')
 
 
-@pending
 def test_limit(tmp_path):
     check_body(tmp_path, 'drive := LIMIT(0, sp, 1500);')
 
 
-@pending
 def test_max_min_clamp(tmp_path):
     check_body(tmp_path, 'drive := MAX(0, MIN(sp, 1500));')
 
 
-@pending
 def test_sanitized_intermediate(tmp_path):
     check_body(tmp_path, 'tmp := LIMIT(0, sp, 1500);\ndrive := tmp;')
 
 
-@pending
 def test_if_range_guard(tmp_path):
     check_body(tmp_path, 'IF sp >= 0 AND sp <= 1500 THEN\n  drive := sp;\nEND_IF;')
 
 
-@pending
 def test_if_clamp(tmp_path):
     check_body(tmp_path, '\n'.join([
         'tmp := sp;',
@@ -178,6 +316,506 @@ def test_if_clamp(tmp_path):
         '  tmp := 0;',
         'END_IF;',
         'drive := tmp;',
+    ]))
+# }}}
+
+
+# {{{ Global variables
+def config(resource_vars='', config_vars=''):
+    return f"""CONFIGURATION cfg
+  VAR_GLOBAL
+{config_vars}
+  END_VAR
+  RESOURCE res ON PLC
+    VAR_GLOBAL
+{resource_vars}
+    END_VAR
+    TASK main(INTERVAL := T#10MS, PRIORITY := 1);
+    PROGRAM inst WITH main : p;
+  END_RESOURCE
+END_CONFIGURATION
+"""
+
+
+GLOBALS = """    g_sp    AT %MW100 : INT;
+    g_drive AT %QW0   : INT;"""
+
+
+def test_global_via_var_external(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + f"""PROGRAM p
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_global_in_resource(tmp_path):
+    check(tmp_path, config(resource_vars=GLOBALS) + f"""PROGRAM p
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_global_without_var_external(tmp_path):
+    # Some dialects allow using globals without declaring them.
+    check(tmp_path, config(config_vars=GLOBALS) + f"""PROGRAM p
+  g_drive := g_sp; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_global_in_function_block(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + f"""FUNCTION_BLOCK fb
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp; {MARKER}
+END_FUNCTION_BLOCK
+""")
+
+
+def test_global_bounded(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + """PROGRAM p
+  VAR_EXTERNAL
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := LIMIT(0, g_sp, 1500);
+END_PROGRAM
+""")
+
+
+def test_local_shadows_global(tmp_path):
+    check(tmp_path, config(config_vars=GLOBALS) + """PROGRAM p
+  VAR
+    g_sp : INT;
+    g_drive : INT;
+  END_VAR
+  g_drive := g_sp;
+END_PROGRAM
+""")
+# }}}
+
+
+# {{{ Calls
+PASS_FB = """FUNCTION_BLOCK pass
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_OUTPUT
+    out : INT;
+  END_VAR
+  out := raw * 2;
+END_FUNCTION_BLOCK
+"""
+
+CALLER = """PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    tmp : INT;
+    alarm : BOOL;
+    f1 : pass;
+  END_VAR
+"""
+
+
+def test_function_block_pass_through(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + f"""
+  f1(raw := sp);
+  drive := f1.out; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_trusted_input(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + """
+  f1(raw := 5);
+  drive := f1.out;
+END_PROGRAM
+""")
+
+
+def test_function_block_bounds_input(tmp_path):
+    check(tmp_path, """FUNCTION_BLOCK pass
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_OUTPUT
+    out : INT;
+  END_VAR
+  out := LIMIT(0, raw, 1500);
+END_FUNCTION_BLOCK
+""" + CALLER + """
+  f1(raw := sp);
+  drive := f1.out;
+END_PROGRAM
+""")
+
+
+def test_function_block_output_parameter(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + f"""
+  f1(raw := sp, out => drive); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_input_assigned_before_call(tmp_path):
+    check(tmp_path, PASS_FB + CALLER + f"""
+  f1.raw := sp;
+  f1();
+  drive := f1.out; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_memory(tmp_path):
+    # The output is the input from the previous call.
+    check(tmp_path, """FUNCTION_BLOCK pass
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_OUTPUT
+    out : INT;
+  END_VAR
+  VAR
+    last : INT;
+  END_VAR
+  out := last;
+  last := raw;
+END_FUNCTION_BLOCK
+""" + CALLER + f"""
+  f1(raw := sp);
+  drive := f1.out; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_block_in_out(tmp_path):
+    check(tmp_path, """FUNCTION_BLOCK acc
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR_IN_OUT
+    total : INT;
+  END_VAR
+  total := total + raw;
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    sum : INT;
+    a1 : acc;
+  END_VAR
+""" + f"""
+  a1(raw := sp, total := sum);
+  drive := sum; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_sink_inside_function_block(tmp_path):
+    check(tmp_path, f"""FUNCTION_BLOCK act
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR
+    drive AT %QW0 : INT;
+  END_VAR
+  drive := raw; {MARKER}
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp AT %MW100 : INT;
+    a1 : act;
+    a2 : act;
+  END_VAR
+  a1(raw := 5);
+  a2(raw := sp);
+END_PROGRAM
+""")
+
+
+def test_sink_inside_function_block_names_call(tmp_path):
+    [w] = run_taint(tmp_path, """FUNCTION_BLOCK act
+  VAR_INPUT
+    raw : INT;
+  END_VAR
+  VAR
+    drive AT %QW0 : INT;
+  END_VAR
+  drive := raw;
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp AT %MW100 : INT;
+    a1 : act;
+  END_VAR
+  a1(raw := sp);
+END_PROGRAM
+""")
+    assert 'SP' in w.msg and 'line 16' in w.msg
+
+
+def test_nested_function_blocks(tmp_path):
+    check(tmp_path, PASS_FB + """FUNCTION_BLOCK outer
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  VAR_OUTPUT
+    y : INT;
+  END_VAR
+  VAR
+    inner : pass;
+  END_VAR
+  inner(raw := x);
+  y := inner.out;
+END_FUNCTION_BLOCK
+
+PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    o1 : outer;
+  END_VAR
+""" + f"""
+  o1(x := sp);
+  drive := o1.y; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_standard_timer(tmp_path):
+    check(tmp_path, f"""PROGRAM p
+  VAR
+    t_sp  AT %MD100 : TIME;
+    drive AT %QW0   : INT;
+    valve AT %QX0.0 : BOOL;
+    start : BOOL;
+    t1 : TON;
+  END_VAR
+  t1(IN := start, PT := t_sp);
+  valve := t1.Q;
+  drive := t1.ET; {MARKER}
+END_PROGRAM
+""")
+
+
+def test_unknown_function_block(tmp_path):
+    check(tmp_path, f"""PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+    x1 : vendor_fb;
+  END_VAR
+  x1(IN := sp);
+  drive := x1.OUT; {MARKER}
+END_PROGRAM
+""")
+
+
+ADD_FN = """FUNCTION second : INT
+  VAR_INPUT
+    a : INT;
+    b : INT;
+  END_VAR
+  second := b;
+END_FUNCTION
+"""
+
+FN_CALLER = """PROGRAM p
+  VAR
+    sp    AT %MW100 : INT;
+    drive AT %QW0   : INT;
+  END_VAR
+"""
+
+
+def test_function_positional_arguments(tmp_path):
+    check(tmp_path, ADD_FN + FN_CALLER + f"""
+  drive := second(sp, 0);
+  drive := second(0, sp); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_named_arguments(tmp_path):
+    check(tmp_path, ADD_FN + FN_CALLER + f"""
+  drive := second(b := 0, a := sp);
+  drive := second(b := sp, a := 0); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_function_bounds_input(tmp_path):
+    check(tmp_path, """FUNCTION clamp : INT
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  clamp := LIMIT(0, x, 1500);
+END_FUNCTION
+""" + FN_CALLER + """
+  drive := clamp(sp);
+END_PROGRAM
+""")
+
+
+def test_function_early_return(tmp_path):
+    check(tmp_path, """FUNCTION f : INT
+  VAR_INPUT
+    x : INT;
+  END_VAR
+  f := x;
+  RETURN;
+END_FUNCTION
+""" + FN_CALLER + f"""
+  drive := f(sp); {MARKER}
+END_PROGRAM
+""")
+
+
+def test_value_from_previous_scan(tmp_path):
+    check_body(tmp_path, f'drive := tmp; {MARKER}\ntmp := sp;')
+# }}}
+
+
+# {{{ CASE, unsigned types and loop conditions
+def test_case_range_bounds_selector(tmp_path):
+    check_body(tmp_path, 'CASE sp OF\n  0..1500: drive := sp;\nEND_CASE;')
+
+
+def test_case_values_bound_selector(tmp_path):
+    check_body(tmp_path, 'CASE sp OF\n  1, 2, 5: drive := sp;\nEND_CASE;')
+
+
+def test_case_else_is_not_bounded(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'CASE sp OF',
+        '  0..1500: drive := sp;',
+        'ELSE',
+        f'  drive := sp; {MARKER}',
+        'END_CASE;',
+    ]))
+
+
+def test_case_on_expression(tmp_path):
+    check_body(tmp_path, f'CASE sp + 1 OF\n  0..1500: drive := sp; {MARKER}\nEND_CASE;')
+
+
+def test_case_bound_does_not_extend_past_case(tmp_path):
+    check_body(tmp_path,
+               f'CASE sp OF\n  0..1500: tmp := 1;\nEND_CASE;\ndrive := sp; {MARKER}')
+
+
+def test_unsigned_source_with_min(tmp_path):
+    check_body(tmp_path, 'drive := MIN(u_sp, 1500);')
+
+
+def test_unsigned_source_alone(tmp_path):
+    check_body(tmp_path, f'drive := u_sp; {MARKER}')
+
+
+def test_unsigned_intermediate_with_min(tmp_path):
+    check_body(tmp_path, 'u_tmp := sp;\ndrive := MIN(u_tmp, 1500);')
+
+
+def test_unsigned_output_with_min(tmp_path):
+    check_body(tmp_path, 'u_drive := MIN(sp, 1500);')
+
+
+def test_direct_address_is_unsigned(tmp_path):
+    check_body(tmp_path, 'drive := MIN(%IW5, 1500);')
+
+
+def test_while_condition_bounds_after_loop(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'WHILE tmp > 1500 OR tmp < 0 DO',
+        '  tmp := tmp / 2;',
+        'END_WHILE;',
+        'drive := tmp;',
+    ]))
+
+
+def test_while_one_sided_condition(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'WHILE tmp > 1500 DO',
+        '  tmp := tmp / 2;',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_while_condition_bounds_body(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'WHILE sp >= 0 AND sp <= 1500 AND i < 10 DO',
+        '  drive := sp;',
+        '  i := i + 1;',
+        'END_WHILE;',
+    ]))
+
+
+def test_repeat_until_bounds_after_loop(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'REPEAT',
+        '  tmp := sp;',
+        'UNTIL tmp >= 0 AND tmp <= 1500',
+        'END_REPEAT;',
+        'drive := tmp;',
+    ]))
+
+
+def test_exit_skips_sanitizing(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'WHILE i < 10 DO',
+        '  i := i + 1;',
+        '  tmp := sp;',
+        '  IF alarm THEN',
+        '    EXIT;',
+        '  END_IF;',
+        '  tmp := LIMIT(0, tmp, 1500);',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_continue_skips_sanitizing(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'WHILE i < 10 DO',
+        '  i := i + 1;',
+        '  tmp := sp;',
+        '  IF alarm THEN',
+        '    CONTINUE;',
+        '  END_IF;',
+        '  tmp := LIMIT(0, tmp, 1500);',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
+    ]))
+
+
+def test_exit_skips_loop_condition(tmp_path):
+    check_body(tmp_path, '\n'.join([
+        'tmp := sp;',
+        'WHILE tmp > 1500 OR tmp < 0 DO',
+        '  IF alarm THEN',
+        '    EXIT;',
+        '  END_IF;',
+        '  tmp := tmp / 2;',
+        'END_WHILE;',
+        f'drive := tmp; {MARKER}',
     ]))
 # }}}
 

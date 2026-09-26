@@ -249,6 +249,68 @@ let stamp_file path ws =
   List.map ws ~f:(fun w ->
     if String.is_empty w.W.file then { w with W.file = path } else w)
 
+(** Warnings reported by the built-in passes, with their severities. *)
+let builtin_warnings = [
+  ("OutOfBounds",      "Array index or declaration out of bounds", W.High);
+  ("UnusedVariable",   "Unused local variable",                    W.Low);
+  ("TaintedVariable",  "Output driven by an untrusted input without a bounds check", W.High);
+  ("DuplicateCode",    "Duplicated code",                          W.Medium);
+  ("InconsistentCopy", "Name a copy of code failed to rename",     W.High);
+  ("MultiTaskWrite",   "Output or global written by programs in different tasks", W.High);
+]
+
+(** Errors are always reported, whatever the minimum severity. *)
+let is_error (w : W.t) =
+  match w.ty with
+  | W.InternalError -> true
+  | W.Inspection ->
+    List.mem ["ParserError"; "LexingError"; "UnknownError"] w.id ~equal:String.equal
+
+let severity_of (w : W.t) =
+  if is_error w then W.High
+  else
+    match List.find Lib.registered_detectors ~f:(fun d -> String.equal d.Detector.id w.id) with
+    | Some d -> d.severity
+    | None ->
+      List.find_map builtin_warnings ~f:(fun (id, _, sev) ->
+          Option.some_if (String.equal id w.id) sev)
+      |> Option.value ~default:W.Medium
+
+let parse_min_severity s =
+  match W.severity_of_string s with
+  | Some sev -> sev
+  | None ->
+    Printf.eprintf "Unknown severity '%s'. Supported: 'low', 'medium' and 'high'.\n" s;
+    exit ReturnCode.fail
+
+(** Set severities and drop warnings below the configured minimum. *)
+let finalize ws =
+  let min = W.severity_rank (parse_min_severity (Config.get ()).min_severity) in
+  List.map ws ~f:(fun w -> { w with W.severity = severity_of w })
+  |> List.filter ~f:(fun w -> is_error w || W.severity_rank w.W.severity >= min)
+
+let sarif_rules () =
+  List.map Lib.registered_detectors ~f:(fun d ->
+      WO.{ rule_id = d.Detector.id; rule_name = d.name; help_url = d.doc_url;
+           rule_severity = d.severity })
+  @ List.map builtin_warnings ~f:(fun (id, name, sev) ->
+      WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev })
+
+(* SARIF is a single document for all input files, so its warnings are
+   collected and printed at exit. *)
+let sarif_pending : W.t list ref = ref []
+
+let report ~use_color out_fmt ws =
+  let ws = finalize ws in
+  match out_fmt with
+  | WO.Sarif -> sarif_pending := !sarif_pending @ ws
+  | WO.Plain | WO.Json -> WO.print_report ~doc_urls ~use_color ws out_fmt
+
+let print_sarif out_fmt =
+  match out_fmt with
+  | WO.Sarif -> WO.print_report ~rules:(sarif_rules ()) !sarif_pending WO.Sarif
+  | WO.Plain | WO.Json -> ()
+
 let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : bool) use_color : int =
   let (read_stdin : bool) = (String.equal "-" path) || (String.is_empty path) in
   if (not read_stdin && not (Stdlib.Sys.file_exists path)) then
@@ -256,7 +318,7 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
       W.mk_internal ~id:"FileNotFoundError"
         (Printf.sprintf "File %s doesn't exists" path)
     in
-    WO.print_report ~use_color [err] out_fmt;
+    report ~use_color out_fmt [err];
     ReturnCode.not_found
   else
     let results_opt =
@@ -284,18 +346,27 @@ let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : b
         let taint_warns =
           if pass_enabled "TaintedVariable"
           then Taint_check.run elements else [] in
+        let dup_warns =
+          let duplicates = pass_enabled "DuplicateCode"
+          and inconsistent = pass_enabled "InconsistentCopy" in
+          if duplicates || inconsistent
+          then Code_duplication.run ~duplicates ~inconsistent elements else [] in
+        let mt_warns =
+          if pass_enabled "MultiTaskWrite"
+          then Multi_task_writes.run elements else [] in
         let ud_warns =
           if pass_enabled "UseDefine"
           then Use_define.run elements else [] in
         let lib_warns = Lib.run_all_checks elements envs cfgs (not verbose) in
-        WO.print_report ~doc_urls ~use_color (
+        report ~use_color out_fmt (
           stamp_file path parser_warns @
           stamp_file path decl_warns @
           stamp_file path unused_warns @
           stamp_file path taint_warns @
+          stamp_file path dup_warns @
+          stamp_file path mt_warns @
           stamp_file path ud_warns @
-          stamp_file path lib_warns)
-          out_fmt;
+          stamp_file path lib_warns);
         if List.is_empty parser_warns then ReturnCode.ok else ReturnCode.fail
       end
 
@@ -304,10 +375,13 @@ let create_file path =
 
 (** Built-in analysis passes (not in the detector registry). *)
 let builtin_passes = [
-  ("DeclarationAnalysis", "Check variable declarations");
-  ("UnusedVariable",      "Detect unused local variables");
-  ("UseDefine",           "Use-define chain analysis (array bounds)");
-  ("TaintedVariable",     "Track data flow from located (AT %...) variables");
+  ("DeclarationAnalysis", "Check variable declarations", W.High);
+  ("UnusedVariable",      "Detect unused local variables", W.Low);
+  ("UseDefine",           "Use-define chain analysis (array bounds)", W.High);
+  ("TaintedVariable",     "Track data flow from located (AT %...) variables", W.High);
+  ("DuplicateCode",       "Detect duplicated code", W.Medium);
+  ("InconsistentCopy",    "Detect names a copy of code failed to rename", W.High);
+  ("MultiTaskWrite",      "Detect outputs and globals written from several tasks", W.High);
 ]
 
 (** Print every registered detector to stdout, one per line, padded for
@@ -315,15 +389,16 @@ let builtin_passes = [
 let print_list_checks () =
   let detectors = Lib.registered_detectors in
   let all_ids =
-    List.map detectors ~f:(fun d -> (d.Detector.id, d.Detector.name))
-    @ builtin_passes
+    List.map detectors ~f:(fun d ->
+        (d.Detector.id, W.severity_to_string d.Detector.severity, d.Detector.name))
+    @ List.map builtin_passes ~f:(fun (id, name, sev) -> (id, W.severity_to_string sev, name))
   in
   let id_width =
-    List.fold_left all_ids ~init:0 ~f:(fun acc (id, _) ->
+    List.fold_left all_ids ~init:0 ~f:(fun acc (id, _, _) ->
       Int.max acc (String.length id))
   in
-  List.iter all_ids ~f:(fun (id, name) ->
-    Printf.printf "%-*s  %s\n" id_width id name);
+  List.iter all_ids ~f:(fun (id, sev, name) ->
+    Printf.printf "%-*s  %-6s  %s\n" id_width id sev name);
   Printf.printf "\n%d check(s). See <https://iec-checker.github.io/docs/detectors/> for details.\n"
     (List.length all_ids)
 
@@ -343,13 +418,14 @@ let parse_output_format s =
   match s with
   | s when String.equal "plain" s -> WO.Plain
   | s when String.equal "json" s -> WO.Json
+  | s when String.equal "sarif" s -> WO.Sarif
   | s ->
-    Printf.eprintf "Unknown output format '%s'. Supported: 'plain' and 'json'.\n" s;
+    Printf.eprintf "Unknown output format '%s'. Supported: 'plain', 'json' and 'sarif'.\n" s;
     exit ReturnCode.fail
 
 (** Load configuration from file (explicit path or auto-discovery) and merge
     with CLI overrides.  Returns the final [Config.t]. *)
-let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format
+let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format ~cli_min_severity
     ~cli_dump ~cli_merge ~cli_verbose ~cli_no_color =
   (* 1. Load base config *)
   let base = match config_path with
@@ -381,6 +457,10 @@ let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format
     | Some s -> { c with output_format = s }
     | None -> c
   in
+  let c = match cli_min_severity with
+    | Some s -> { c with min_severity = s }
+    | None -> c
+  in
   let c = if cli_dump then { c with dump = true } else c in
   let c = if cli_merge then { c with merge = true } else c in
   let c = if cli_verbose then { c with verbose = true } else c in
@@ -408,8 +488,18 @@ let () =
       ~short: 'o'
       ~long: "output-format"
       ~description:
-        "Output format for the checker messages. Supported formats: 'plain' and 'json'."
+        "Output format for the checker messages. Supported formats: 'plain', 'json' and 'sarif' (SARIF 2.1.0)."
       ~placeholder: "OUTPUT_FORMAT"
+      ()
+  in
+
+  let cli_min_severity =
+    Clap.optional_string
+      ~long: "min-severity"
+      ~description:
+        "Only report warnings of at least this severity: 'low' (default), 'medium' or 'high'. \
+         Errors are always reported."
+      ~placeholder: "SEVERITY"
       ()
   in
 
@@ -533,6 +623,7 @@ let () =
     ~config_path
     ~cli_input_format
     ~cli_output_format
+    ~cli_min_severity
     ~cli_dump:d
     ~cli_merge:m
     ~cli_verbose:v
@@ -551,6 +642,7 @@ let () =
   (* Resolve effective values from merged config *)
   let input_format = parse_input_format cfg.input_format in
   let output_format = parse_output_format cfg.output_format in
+  ignore (parse_min_severity cfg.min_severity : W.severity);
   let use_color = cfg.use_color in
   let create_dumps = cfg.dump in
   let verbose = cfg.verbose in
@@ -582,5 +674,6 @@ let () =
             ~init:[]
           |> List.for_all ~f:(phys_equal ReturnCode.ok))
       in
+      print_sarif output_format;
       if success
       then exit ReturnCode.ok else exit ReturnCode.fail

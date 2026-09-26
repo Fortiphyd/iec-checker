@@ -27,7 +27,7 @@ let check_decl prefixes vd =
           "Variable %s of type %s should start with prefix %S"
           (display_name vd) ty_name prefix
       in
-      Some (Warn.mk ti.linenr ti.col "PLCOPEN-N2" msg)
+      Some (Warn.mk_at ti "PLCOPEN-N2" msg)
 
 let do_check elems =
   let prefixes = (Config.get ()).naming_type_prefixes in
@@ -44,5 +44,6 @@ let detector : Detector.t = {
     "Variable names should start with a configurable type-based prefix \
      (Hungarian notation).";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N2";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

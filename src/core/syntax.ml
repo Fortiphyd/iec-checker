@@ -227,7 +227,11 @@ module DirVar = struct
       | Some(v) -> (size_to_string v)
       | None -> ""
     in
-    Printf.sprintf "%%%s%s%s" sz_str loc_str (path_to_string t.path)
+    let path_str =
+      if t.is_partly_located then "*" else path_to_string t.path
+    in
+    (* 6.5.5.2: location prefix, then size prefix, then the address. *)
+    Printf.sprintf "%%%s%s%s" loc_str sz_str path_str
 
   let to_yojson t = to_yojson t
   let get_name var = to_string var
@@ -744,6 +748,8 @@ module Task = struct
   let set_single t v = {t with single = Some v}
 
   let set_priority t v = {t with priority = Some v}
+
+  let get_name t = t.name
 
 end
 

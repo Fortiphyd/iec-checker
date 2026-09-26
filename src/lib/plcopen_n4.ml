@@ -57,7 +57,7 @@ let check_identifier ~style name linenr col =
       let msg = Printf.sprintf
           "Identifier %s does not match required case %s" name label
       in
-      Some (Warn.mk linenr col "PLCOPEN-N4" msg)
+      Some (Warn.mk_for_name ~name linenr col "PLCOPEN-N4" msg)
 
 let display_name_of_ti ti fallback =
   if String.is_empty ti.IECCheckerCore.Tok_info.raw then fallback else ti.raw
@@ -128,5 +128,6 @@ let detector : Detector.t = {
     "Identifiers should follow a configurable naming convention per element \
      kind (variable, constant, POU, type).";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N4";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

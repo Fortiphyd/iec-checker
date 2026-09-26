@@ -1,8 +1,11 @@
 (** Describes single token of a parse tree *)
 
-type t = { id : int; linenr : int; col : int; raw : string } [@@deriving yojson, show]
-(** Parse tree item.  [raw] stores the original source spelling of the token
-    (preserving case) for identifiers; empty string otherwise. *)
+type t = { id : int; linenr : int; col : int; start_col : int; raw : string }
+[@@deriving yojson, show]
+(** Parse tree item. [col] is the column of the last character of the token
+    and [start_col] of its first one, both starting from 1. [raw] stores the
+    original source spelling of the token (preserving case) for identifiers;
+    empty string otherwise. *)
 
 val create : Lexing.lexbuf -> t
 (** [create] Create new parse tree element from Lexing.lexbuf *)

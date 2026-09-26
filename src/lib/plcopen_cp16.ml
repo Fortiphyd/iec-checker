@@ -24,7 +24,7 @@ let check_elem fb_names = function
                   "Task should call PROGRAM, not FUNCTION_BLOCK '%s'"
                   tn
               in
-              Some (Warn.mk ti.linenr ti.col "PLCOPEN-CP16" msg)
+              Some (Warn.mk_at ti "PLCOPEN-CP16" msg)
             | _ -> None))
   | _ -> []
 
@@ -40,5 +40,6 @@ let detector : Detector.t = {
     "A task in a RESOURCE block should only execute PROGRAM instances, \
      not FUNCTION_BLOCK instances.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP16";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

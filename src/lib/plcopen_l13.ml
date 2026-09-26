@@ -83,7 +83,7 @@ let mk_warn var_name (ti : TI.t) =
       "FOR loop variable '%s' should not be used outside the FOR loop"
       var_name
   in
-  Warn.mk ti.linenr ti.col "PLCOPEN-L13" msg
+  Warn.mk_at ti "PLCOPEN-L13" msg
 
 (** Walk a statement list sequentially. For each FOR, check all subsequent
     siblings for uses of its control variable. Also recurse into compound
@@ -140,5 +140,6 @@ let detector : Detector.t = {
   summary =
     "Referencing a [FOR] loop control variable after [END_FOR] relies on implementation-defined behavior.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-L13";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

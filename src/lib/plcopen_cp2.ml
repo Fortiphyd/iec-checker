@@ -8,7 +8,7 @@ module S = Syntax
 (** Generate warning for a given basic block *)
 let mk_warn (bb : Cfg.bb) : Warn.t =
   let ti = Cfg.bb_get_ti bb in
-  Warn.mk ti.linenr ti.col "PLCOPEN-CP2" "All code shall be used in the application"
+  Warn.mk_at ti "PLCOPEN-CP2" "All code shall be used in the application"
 
 (** Find basic blocks inside the loop statements that are unreachable after
     CONTINUE/EXIT blocks. *)
@@ -45,5 +45,6 @@ let detector : Detector.t = {
   name = "All code shall be used in the application";
   summary = "Unreachable code reflects a logic mistake and should be removed.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP2";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.cfgs);
 }

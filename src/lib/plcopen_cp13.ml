@@ -8,7 +8,7 @@ let check_stmt func_name = function
   | S.StmFuncCall (ti, f, _) ->
       if String.equal (S.Function.get_name f) func_name then
         let msg = "POUs shall not call themselves directly or indirectly" in
-        let w = Warn.mk ti.linenr ti.col "PLCOPEN-CP13" msg in
+        let w = Warn.mk_at ti "PLCOPEN-CP13" msg in
         Some w
       else None
   | _ -> None
@@ -50,5 +50,6 @@ let detector : Detector.t = {
   name = "POUs shall not call themselves directly or indirectly";
   summary = "Recursion is forbidden in IEC 61131-3 — rewrite as a loop.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP13";
+  severity = IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

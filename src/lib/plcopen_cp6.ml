@@ -17,7 +17,7 @@ let check_elem elem =
                   let ti = S.VarDecl.get_var_ti var_decl
                   and msg = "External variables in functions, function blocks and classes should be avoided"
                   in
-                  acc @ [(Warn.mk ti.linenr ti.col "PLCOPEN-CP6" msg)]
+                  acc @ [(Warn.mk_at ti "PLCOPEN-CP6" msg)]
                 end
               | _ -> acc
             end)
@@ -34,5 +34,6 @@ let detector : Detector.t = {
     "Functions, function blocks and classes should not depend on global state \
      via [VAR_EXTERNAL].";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP6";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

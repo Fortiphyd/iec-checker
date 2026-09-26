@@ -16,7 +16,7 @@ let check_elem elem =
             "Avoid hardcoded physical address %s in code"
             (S.DirVar.get_name dv)
         in
-        Some (Warn.mk ti.linenr ti.col "PLCOPEN-N1" msg)
+        Some (Warn.mk_at ti "PLCOPEN-N1" msg)
       | S.VarUse.SymVar _ -> None)
 
 let do_check elems =
@@ -29,5 +29,6 @@ let detector : Detector.t = {
     "Hardcoded physical addresses should be replaced with symbolic names \
      declared in a VAR block.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N1";
+  severity = IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

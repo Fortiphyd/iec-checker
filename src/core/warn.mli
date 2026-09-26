@@ -4,17 +4,38 @@ type warn_ty =
   | InternalError
 [@@deriving yojson]
 
+(** How likely a warning points at a real problem. *)
+type severity = Low | Medium | High
+
+val severity_to_string : severity -> string
+val severity_of_string : string -> severity option
+
+val severity_rank : severity -> int
+(** [severity_rank] orders severities from [Low] to [High]. *)
+
 type t = {
   linenr: int;
   column: int;
   file: string;
   id: string;
   msg: string;
+  start_column: int;
+  (** Column of the first character of the reported token; [column] is the
+      column of its last one. *)
   context: string;
   ty: warn_ty [@key "type"];
+  severity: severity;
 } [@@deriving yojson]
 
-val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> int -> int -> string -> string -> t
+val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> ?start_column:int -> int -> int -> string -> string -> t
+(** [mk linenr column id msg]. [start_column] defaults to [column]. *)
+
+val mk_for_name : ?severity:(severity) -> name:string -> int -> int -> string -> string -> t
+(** [mk_for_name ~name linenr column id msg] A warning about the identifier
+    [name] ending at [column]. *)
+
+val mk_at : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> Tok_info.t -> string -> string -> t
+(** [mk_at ti id msg] A warning at the token [ti]. *)
 val mk_internal : ?id:(string) -> string -> t
 val mk_from_lexbuf : ?context:(string) -> Lexing.lexbuf -> string -> string -> t
 

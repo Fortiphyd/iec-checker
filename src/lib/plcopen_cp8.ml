@@ -4,38 +4,38 @@ open IECCheckerCore
 module S = Syntax
 module AU = IECCheckerCore.Ast_util
 
-let is_float = function
-  | S.ExprConstant (_, c) -> begin
-      match c with
-      | S.CReal _ -> true
-      | _ -> false
-    end
+module T = IECCheckerAnalysis.Expr_type
+
+(** Whether [e] is a REAL or LREAL value, based on declarations and literals
+    (see {!IECCheckerAnalysis.Expr_type}). *)
+let is_float env e =
+  match T.type_of env e with
+  | T.Elem (S.REAL | S.LREAL) | T.Real_literal -> true
   | _ -> false
 
-let check_elem elem =
-  AU.get_pou_exprs elem
-  |> List.fold_left ~init:[]
-    ~f:(fun acc expr -> begin
-          match expr with
-          | S.ExprBin(ti, lhs, operator, rhs) -> begin
-              match operator with
-              | NEG | EQ -> begin
-                  if (is_float lhs) || (is_float rhs) then begin
-                    let msg = "Floating point comparison shall not be equality or inequality" in
-                    acc @ [(Warn.mk ti.linenr ti.col "PLCOPEN-CP8" msg)]
-                  end
-                  else acc
-                end
-              | _ -> acc
-            end
-          | _ -> acc
-        end)
+let check_elem elements elem =
+  let env = T.env_of elements elem in
+  (* Comparisons can be nested in other expressions. Call arguments are
+     separate expressions in [get_pou_exprs]. *)
+  let rec check acc = function
+    | S.ExprBin (ti, lhs, op, rhs) ->
+      let acc = check (check acc lhs) rhs in
+      begin match op with
+        | S.EQ | S.NEQ when is_float env lhs || is_float env rhs ->
+          let msg = "Floating point comparison shall not be equality or inequality" in
+          Warn.mk_at ti "PLCOPEN-CP8" msg :: acc
+        | _ -> acc
+      end
+    | S.ExprUn (_, _, e) -> check acc e
+    | S.ExprVariable _ | S.ExprConstant _ | S.ExprFuncCall _ -> acc
+  in
+  AU.get_pou_exprs elem |> List.fold ~init:[] ~f:check |> List.rev
 
 let do_check elems =
   List.fold_left
     ~init:[]
     elems
-    ~f:(fun acc elem -> acc @ (check_elem elem))
+    ~f:(fun acc elem -> acc @ (check_elem elems elem))
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP8";
@@ -43,5 +43,6 @@ let detector : Detector.t = {
   summary =
     "Use a tolerance instead of [=] or [<>] when comparing [REAL] values.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP8";
+  severity = IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

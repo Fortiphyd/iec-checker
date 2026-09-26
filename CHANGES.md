@@ -41,6 +41,17 @@
 - Add Dockerfile (#69, @cangkui)
 - Parser: Preserve literal types; add bit string literals (#66, @cangkui)
 - Add `PLCOpen-N1` (#68, @cangkui)
+- Add `PLCOpen-CP12` (#45)
+- Add `PLCOpen-CP20` (#49)
+- Severity levels for all checks and the `--min-severity` CLI option (#76)
+- SARIF 2.1.0 output format (`-o sarif`)
+- Record where tokens start: warnings get a `start_column`, SARIF regions cover the reported token, and directly represented variables span the whole address
+- `MultiTaskWrite`: outputs and globals written by programs in different tasks
+- Expression typing module (#71)
+- `NarrowingAssignment`: values that may not fit in the assigned variable (#73)
+- `MixedTypeArithmetic`: arithmetic on operands of different numeric types (#74)
+- `PLCOpen-CP8`: detect comparisons of REAL/LREAL variables and expressions, including nested ones (#72)
+- `PLCOpen-CP28`: detect comparisons of TIME, TOD and DT variables and expressions, including timer outputs and nested comparisons
 
 ## 0.4.0 (2022-02-26)
 
