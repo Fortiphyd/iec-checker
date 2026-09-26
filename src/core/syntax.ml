@@ -55,6 +55,11 @@ module TimeValue = struct
 
   let to_string tv = show tv
 
+  let has_date tv = tv.y <> 0 || tv.mo <> 0
+
+  let has_time tv =
+    Float.(tv.h <> 0. || tv.m <> 0. || tv.s <> 0. || tv.ms <> 0. || tv.us <> 0. || tv.ns <> 0.)
+
   let is_zero tv = phys_equal tv.d 0.
   (* TODO: List.map ~f(fun fv -> phys_equal fv 0.) ???Fields *)
 

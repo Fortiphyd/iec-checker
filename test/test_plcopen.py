@@ -121,6 +121,9 @@ def test_cp28():
     with open(f) as fp:
         expected = [i for i, line in enumerate(fp, 1) if 'PLCOPEN CP-28' in line]
     assert sorted(w.linenr for w in filter_warns(checker_warnings, 'PLCOPEN-CP28')) == expected
+    ints = [w.linenr for w in filter_warns(checker_warnings, 'PLCOPEN-CP28')
+            if w.msg.endswith('(the integer holds a time)')]
+    assert ints == [27, 77, 82, 85, 88, 91]
     with DumpManager(fdump):
         pass
 

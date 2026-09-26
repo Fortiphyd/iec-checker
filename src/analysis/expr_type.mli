@@ -3,7 +3,10 @@
     Types are found from declarations only: variables, array elements, struct
     members and function block outputs, typed literals, conversion functions,
     standard functions and the results of functions. Nothing is propagated
-    between statements. *)
+    between statements.
+
+    Duration and time of day literals are typed TIME, date literals DATE and
+    date and time literals DT. *)
 open IECCheckerCore
 module S = Syntax
 

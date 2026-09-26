@@ -32,6 +32,12 @@ module TimeValue : sig
 
   val is_zero : t -> bool
 
+  val has_date : t -> bool
+  (** Whether the value has a year or month, as date literals do. *)
+
+  val has_time : t -> bool
+  (** Whether the value has hours or smaller units. *)
+
   val to_yojson : t -> Yojson.Safe.t
 end
 
