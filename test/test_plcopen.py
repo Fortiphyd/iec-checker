@@ -527,3 +527,15 @@ def test_cp4_64_bit_types():
     with DumpManager(f'{f}.dump.json'):
         pass
     assert filter_warns(warns, 'PLCOPEN-CP4') == []
+
+
+def test_cp6_constant_globals():
+    """Referencing VAR_GLOBAL CONSTANT is an exception of the rule."""
+    f = 'st/plcopen-cp6-constants.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* CP6 *)' in line]
+    assert [w.linenr for w in filter_warns(warns, 'PLCOPEN-CP6')] == expected
