@@ -2190,30 +2190,30 @@ let var_decls :=
   { list_flatten vds }
 
 let var_decls1 :=
-  | T_VAR; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.Var(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.Var(q) in Syntax.VarDecl.set_attr v attr)
   }
-  | T_VAR_INPUT; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_INPUT; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarIn(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarIn(q) in Syntax.VarDecl.set_attr v attr)
   }
-  | T_VAR_OUTPUT; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_OUTPUT; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarOut(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarOut(q) in Syntax.VarDecl.set_attr v attr)
   }
   | T_VAR_IN_OUT; option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
     |> List.map ~f:(fun v -> Syntax.VarDecl.set_attr v Syntax.VarDecl.VarInOut)
   }
-  | T_VAR_EXTERNAL; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_EXTERNAL; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarExternal(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarExternal(q) in Syntax.VarDecl.set_attr v attr)
   }
   | ~ = var_global_decl; <>
   | T_VAR_TEMP; option(qualifier); vars = var_decls_list; T_END_VAR;
@@ -2235,17 +2235,16 @@ let var_decls1 :=
   }
 
 let var_global_decl :=
-  | T_VAR_GLOBAL; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_GLOBAL; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarGlobal(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarGlobal(q) in Syntax.VarDecl.set_attr v attr)
   }
 
-(** We don't care. *)
 let qualifier :=
-  | T_RETAIN; {}
-  | T_NON_RETAIN; {}
-  | T_CONSTANT; {}
+  | T_RETAIN; { Syntax.VarDecl.QRetain }
+  | T_NON_RETAIN; { Syntax.VarDecl.QNonRetain }
+  | T_CONSTANT; { Syntax.VarDecl.QConstant }
 
 let var_decls_list :=
   /* nothing */
