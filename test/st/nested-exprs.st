@@ -6,7 +6,7 @@ PROGRAM p
   END_VAR
 
   IF y > 0 THEN
-    IF x = 0.0 THEN (* PLCOPEN-CP8 *)
+    IF x = 1.5 THEN (* PLCOPEN-CP8 *)
       y := 1;
     END_IF;
     WHILE t = T#1S DO (* PLCOPEN-CP28 *)

@@ -18,19 +18,19 @@ PROGRAM demo
         m : motor_t;
     END_VAR
 
-    IF x = 0.0 THEN (* PLCOPEN CP-8 *)
+    IF x = 0.0 THEN (* comparing to 0.0 is an exception of the rule *)
       x := x + 1;
     END_IF;
 
-    IF x <> 0.0 THEN (* PLCOPEN CP-8 *)
+    IF x <> 0.0 THEN
       x := x + 1;
     END_IF;
 
-    IF 0.0 = x THEN (* PLCOPEN CP-8 *)
+    IF 0.0 = x THEN
       x := x + 1;
     END_IF;
 
-    IF 0.0 <> x THEN (* PLCOPEN CP-8 *)
+    IF 0.0 <> x THEN
       x := x + 1;
     END_IF;
 
@@ -38,13 +38,16 @@ PROGRAM demo
       x := x + 1;
     END_IF;
 
+    IF x - y = 0.1 THEN (* PLCOPEN CP-8 *) (* the rule's example *)
+      x := 0.0;
+    END_IF;
     IF x = y THEN (* PLCOPEN CP-8 *)
       x := 0.0;
     END_IF;
     IF lr <> x THEN (* PLCOPEN CP-8 *)
       x := 0.0;
     END_IF;
-    IF x = 0 THEN (* PLCOPEN CP-8 *)
+    IF x = 0 THEN
       x := 0.0;
     END_IF;
     IF ready AND x = y THEN (* PLCOPEN CP-8 *)
