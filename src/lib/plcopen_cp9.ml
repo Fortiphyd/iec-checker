@@ -13,13 +13,10 @@ let warn_at elem what =
     Warn.mk_at ti "PLCOPEN-CP9" (Printf.sprintf "%s is too complex (%s)" name what)
   | None -> Warn.mk 0 0 "PLCOPEN-CP9" (Printf.sprintf "Code is too complex (%s)" what)
 
-let get_mccabe_violations elems cfg =
-  let cc = CC.eval_mccabe cfg in
+let get_mccabe_violations elem =
+  let cc = CC.mccabe elem in
   if cc > Config.mccabe_complexity_threshold () then
-    let what = Printf.sprintf "%d McCabe complexity" cc in
-    match List.find elems ~f:(fun e -> S.get_pou_id e = Cfg.get_pou_id cfg) with
-    | Some elem -> [warn_at elem what]
-    | None -> [Warn.mk 0 0 "PLCOPEN-CP9" (Printf.sprintf "Code is too complex (%s)" what)]
+    [warn_at elem (Printf.sprintf "%d McCabe complexity" cc)]
   else []
 
 let get_statements_num_violations elem =
@@ -28,16 +25,11 @@ let get_statements_num_violations elem =
     [warn_at elem (Printf.sprintf "%d statements" stmts_num)]
   else []
 
-let do_check elems cfgs =
-  List.fold_left
-    cfgs
-    ~init:[]
-    ~f:(fun acc cfg -> acc @ (get_mccabe_violations elems cfg))
-  |> List.append
-  @@ List.fold_left
-    elems
-    ~init:[]
-    ~f:(fun acc elem -> acc @ (get_statements_num_violations elem))
+let do_check elems =
+  List.concat_map elems ~f:(function
+      | S.IECProgram _ | S.IECFunctionBlock _ | S.IECFunction _ | S.IECClass _ as e ->
+        get_mccabe_violations e @ get_statements_num_violations e
+      | _ -> [])
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP9";
@@ -47,6 +39,6 @@ let detector : Detector.t = {
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP9";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.High;
-  check = (fun (i : Detector.inputs) -> do_check i.elements i.cfgs);
+  check = (fun (i : Detector.inputs) -> do_check i.elements);
 }
 

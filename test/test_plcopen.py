@@ -251,9 +251,34 @@ def test_cp9():
     fdump = f'{f}.dump.json'
     warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(warns, 'PLCOPEN-CP9')) == 2
+    # 27 statements; its McCabe complexity is 8, below the default of 15.
+    [w] = filter_warns(warns, 'PLCOPEN-CP9')
+    assert w.msg == 'CHARCURVE is too complex (27 statements)'
     with DumpManager(fdump):
         pass
+
+
+def test_cp9_mccabe(tmp_path):
+    cfg = tmp_path / 'iec_checker.json'
+    cfg.write_text(json.dumps({'thresholds': {'mccabe_complexity': 0}}))
+    cases = {
+        'x := 1;': 1,
+        'IF c THEN x := 1; ELSE x := 2; END_IF;': 2,
+        'IF c THEN x := 1; END_IF; IF c THEN x := 2; END_IF;': 3,
+        'IF c THEN x := 1; ELSIF x > 2 THEN x := 2; ELSE x := 3; END_IF;': 3,
+        'CASE x OF 1: x := 2; 2: x := 3; 3: x := 4; END_CASE;': 4,
+        'WHILE c DO IF c THEN EXIT; END_IF; END_WHILE;': 3,
+        'RETURN; x := 1;': 1,
+    }
+    for body, expected in cases.items():
+        f = tmp_path / 'p.st'
+        f.write_text(f'PROGRAM p\nVAR x : INT; c : BOOL; END_VAR\n{body}\nEND_PROGRAM\n')
+        warns, rc = run_checker([str(f)], args=['-c', str(cfg)])
+        assert rc == 0
+        with DumpManager(f'{f}.dump.json'):
+            pass
+        [w] = [w for w in filter_warns(warns, 'PLCOPEN-CP9') if 'McCabe' in w.msg]
+        assert w.msg == f'p is too complex ({expected} McCabe complexity)', body
 
 
 def test_n1():
