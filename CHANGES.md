@@ -54,7 +54,7 @@
 - Record where tokens start: warnings get a `start_column`, SARIF regions cover the reported token, and directly represented variables span the whole address
 - `MultiTaskWrite`: outputs and globals written by programs in different tasks
 - Expression typing module (#71)
-- `NarrowingAssignment`: values that may not fit in the assigned variable (#73)
+- `PLCOpen-CP25`: report implicit conversions that may lose value or precision, based on expression types, in assignments (including literals out of range), call arguments and operands; allow lossless ones, as the rule does (#73)
 - `MixedTypeArithmetic`: arithmetic on operands of different numeric types (#74)
 - `PLCOpen-CP8`: detect comparisons of REAL/LREAL variables and expressions, including nested ones (#72)
 - `PLCOpen-CP28`: detect comparisons of TIME, TOD and DT variables and expressions, including timer outputs and nested comparisons

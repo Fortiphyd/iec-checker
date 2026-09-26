@@ -134,11 +134,19 @@ def test_cp13():
 def test_cp25():
     f = 'st/plcopen-cp25.st'
     fdump = f'{f}.dump.json'
-    checker_warnings, rc = run_checker([f])
+    warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(checker_warnings, 'PLCOPEN-CP25')) == 2
     with DumpManager(fdump):
         pass
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* PLCOPEN-CP25 *)' in line]
+    ws = filter_warns(warns, 'PLCOPEN-CP25')
+    assert sorted(w.linenr for w in ws) == expected
+    msgs = {w.linenr: w.msg for w in ws}
+    # The rule's own example.
+    assert msgs[54] == ('Implicit conversion from REAL to INT variable I may lose '
+                        'information; convert it explicitly')
+    assert msgs[60] == 'Value 300 is out of range for SINT variable S (-128..127)'
 
 
 def test_l10():

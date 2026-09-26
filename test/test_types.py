@@ -19,14 +19,6 @@ def check_marked(f, warn_id):
     return filter_warns(warns, warn_id)
 
 
-def test_narrowing_assignment():
-    ws = check_marked('st/narrowing-assignment.st', 'NarrowingAssignment')
-    msgs = {w.linenr: w.msg for w in ws}
-    assert msgs[38] == 'DINT value assigned to INT variable I may not fit; convert it explicitly'
-    assert msgs[44] == 'Value 300 is out of range for SINT variable S (-128..127)'
-    assert msgs[46] == 'Value -1 is out of range for UINT variable U (0..65535)'
-
-
 def test_mixed_type_arithmetic():
     ws = check_marked('st/mixed-type-arithmetic.st', 'MixedTypeArithmetic')
     assert ws[0].msg == 'Arithmetic on INT and DINT; convert one operand explicitly'

@@ -1,70 +1,183 @@
 open Core
 open IECCheckerCore
 
-module TI = Tok_info
 module S = Syntax
+module AU = Ast_util
+module T = IECCheckerAnalysis.Expr_type
 
-let types_can_be_casted ty_from ty_to =
-  let open S in
-  match (ty_from, ty_to) with
-  | (DTyDeclSingleElement(se_from_spec,_),DTyDeclSingleElement(se_to_spec,_)) -> begin
-      match (se_from_spec, se_to_spec) with
-      | (DTySpecElementary(REAL|LREAL),DTySpecElementary(SINT|INT|DINT|LINT|USINT|UDINT|ULINT|BOOL|BYTE|WORD|DWORD|LWORD)) -> false
-      | (DTySpecElementary(SINT|INT|DINT|LINT|USINT|UDINT|ULINT|BOOL|BYTE|WORD|DWORD|LWORD),DTySpecElementary(REAL|LREAL)) -> false
-      | _ -> true
+(* Report implicit conversions that may lose value or precision: in
+   assignments, in the arguments of calls, and between the operands of an
+   operation. The rule allows implicit conversions without loss (IEC 61131-3,
+   Table 11), such as INT to DINT or INT to REAL. *)
+
+let int_range = function
+  | T.Signed b when b < 63 -> Some (-(1 lsl (b - 1)), (1 lsl (b - 1)) - 1)
+  | T.Unsigned b when b < 63 -> Some (0, (1 lsl b) - 1)
+  | T.Signed _ | T.Unsigned _ | T.Float _ -> None
+
+let is_int = function T.Signed _ | T.Unsigned _ -> true | T.Float _ -> false
+
+let warn (ti : Tok_info.t) msg = Warn.mk_at ti "PLCOPEN-CP25" msg
+
+(** A warning if storing [value] in [what], of type [dst], converts it
+    implicitly with a possible loss. *)
+let check_conversion env ~what ti value dst =
+  match dst with
+  | T.Elem dst_ty -> begin
+      match T.num_of dst_ty, T.type_of env value with
+      | Some dst, T.Elem src_ty -> begin
+          match T.num_of src_ty with
+          | Some src when not (T.fits src dst) ->
+            Some (warn ti (Printf.sprintf
+                             "Implicit conversion from %s to %s %s may lose information; \
+                              convert it explicitly"
+                             (S.ety_to_string src_ty) (S.ety_to_string dst_ty) what))
+          | _ -> None
+        end
+      | Some dst, T.Int_literal (Some v) -> begin
+          match int_range dst with
+          | Some (lo, hi) when v < lo || v > hi ->
+            Some (warn ti (Printf.sprintf "Value %d is out of range for %s %s (%d..%d)"
+                             v (S.ety_to_string dst_ty) what lo hi))
+          | _ -> None
+        end
+      | Some dst, T.Real_literal when is_int dst ->
+        Some (warn ti (Printf.sprintf
+                         "Implicit conversion of a real literal to %s %s loses its fraction"
+                         (S.ety_to_string dst_ty) what))
+      | _ -> None
     end
-  | _ -> true
-
-let check_assign_expr (ti : TI.t) lhs rhs env =
-  let check_types lhs_decl rhs_decl =
-    match (S.VarDecl.get_ty_spec lhs_decl, S.VarDecl.get_ty_spec rhs_decl) with
-    | (Some(lhs_ty),Some(rhs_ty)) -> begin
-        if not (types_can_be_casted lhs_ty rhs_ty) then
-          Some(Warn.mk_at ti "PLCOPEN-CP25" "Data type conversion should be explicit.")
-        else
-          None
-      end
-    | _ -> None
-  in
-  let lhs_opt = Env.lookup_vdecl env (S.VarUse.get_name lhs)
-  and rhs_opt = Env.lookup_vdecl env (S.VarUse.get_name rhs)
-  in
-  match (lhs_opt,rhs_opt) with
-  | (Some(lhs), Some(rhs)) -> check_types lhs rhs
   | _ -> None
 
-let check_pou pou env =
-  Ast_util.get_pou_exprs pou
-  |> List.fold_left
-    ~init:[]
-    ~f:(fun acc expr -> begin
-          match expr with
-          | S.ExprBin (ti,(S.ExprVariable (_, lhs)),(S.EQ|S.NEQ|S.ASSIGN|S.ASSIGN_REF|S.GT|S.LT|S.GE|S.LE|S.SENDTO),(S.ExprVariable (_, rhs))) -> begin
-              check_assign_expr ti lhs rhs env
-              |> Option.to_list
-              |> List.append acc
-            end
-          | _ -> acc
-        end)
+(* {{{ Assignments *)
+(** Assignments of the statements, without the arguments of calls. *)
+let rec assignments = function
+  | S.StmExpr (_, S.ExprBin (_, S.ExprVariable (_, lhs), S.ASSIGN, rhs)) -> [(lhs, rhs)]
+  | S.StmIf (_, _, body, elsifs, els) ->
+    List.concat_map (body @ elsifs @ els) ~f:assignments
+  | S.StmElsif (_, _, body) | S.StmWhile (_, _, body) | S.StmRepeat (_, body, _) ->
+    List.concat_map body ~f:assignments
+  | S.StmCase (_, _, sels, els) ->
+    List.concat_map sels ~f:(fun (sel : S.case_selection) -> List.concat_map sel.body ~f:assignments)
+    @ List.concat_map els ~f:assignments
+  | S.StmFor (_, ctrl, body) -> assignments ctrl.assign @ List.concat_map body ~f:assignments
+  | _ -> []
 
-let do_check elems envs =
-  List.fold_left
-    elems
-    ~init:[]
-    ~f:(fun acc pou -> begin
-          let env = List.find_exn envs
-              ~f:(fun env -> phys_equal (Env.get_id env) (S.get_pou_id pou))
-          in
-          acc @ check_pou pou env
-        end)
+let check_assignments env elem =
+  List.concat_map (AU.get_top_stmts elem) ~f:assignments
+  |> List.filter_map ~f:(fun (lhs, rhs) ->
+      check_conversion env ~what:("variable " ^ S.VarUse.get_name lhs)
+        (S.VarUse.get_ti lhs) rhs (T.var_type env lhs))
+(* }}} *)
+
+(* {{{ Arguments *)
+(** Inputs of a function or function block, in declaration order. *)
+let inputs decls =
+  List.filter decls ~f:(fun d ->
+      match S.VarDecl.get_attr d with
+      | Some (S.VarDecl.VarIn _ | S.VarDecl.VarInOut) -> true
+      | _ -> false)
+  |> List.sort ~compare:(fun a b ->
+      let ta = S.VarDecl.get_var_ti a and tb = S.VarDecl.get_var_ti b in
+      Tuple2.compare ~cmp1:Int.compare ~cmp2:Int.compare (ta.linenr, ta.col) (tb.linenr, tb.col))
+
+let check_arguments elements env elem =
+  let callees =
+    List.filter_map elements ~f:(function
+        | S.IECFunctionBlock (_, fb) -> Some (S.FunctionBlock.get_name fb.id, fb.variables)
+        | S.IECFunction (_, f) -> Some (S.Function.get_name f.id, f.variables)
+        | _ -> None)
+    |> String.Map.of_alist_reduce ~f:(fun first _ -> first)
+  in
+  let instance_types =
+    AU.get_var_decls elem
+    |> List.filter_map ~f:(fun d ->
+        match S.VarDecl.get_ty_spec d with
+        | Some (S.DTyDeclSingleElement (S.DTySpecSimple ty, _)) -> Some (S.VarDecl.get_var_name d, ty)
+        | _ -> None)
+    |> String.Map.of_alist_reduce ~f:(fun first _ -> first)
+  in
+  AU.get_pou_stmts elem
+  |> List.concat_map ~f:(function
+      | S.StmFuncCall (_, f, params) ->
+        let name = S.Function.get_name f in
+        let callee = Option.value (Map.find instance_types name) ~default:name in
+        begin match Map.find callees callee with
+          | None -> []
+          | Some decls ->
+            let inputs = inputs decls in
+            let _, args =
+              List.fold params ~init:(inputs, []) ~f:(fun (positional, acc) (p : S.func_param_assign) ->
+                  match p.name, p.stmt with
+                  | Some n, S.StmExpr (_, S.ExprBin (_, _, S.ASSIGN, e)) ->
+                    let decl = List.find inputs ~f:(fun d -> String.equal (S.VarDecl.get_var_name d) n) in
+                    (positional, (decl, e) :: acc)
+                  | None, S.StmExpr (_, e) -> begin
+                      match positional with
+                      | d :: rest -> (rest, (Some d, e) :: acc)
+                      | [] -> ([], acc)
+                    end
+                  | _ -> (positional, acc))
+            in
+            List.filter_map (List.rev args) ~f:(fun (decl, e) ->
+                Option.bind decl ~f:(fun d ->
+                    Option.bind (S.VarDecl.get_ty_spec d) ~f:(fun spec ->
+                        check_conversion env
+                          ~what:(Printf.sprintf "parameter %s of %s" (S.VarDecl.get_var_name d) callee)
+                          (S.expr_get_ti e) e (T.type_of_spec env spec))))
+        end
+      | _ -> [])
+(* }}} *)
+
+(* {{{ Operands *)
+let converting = function
+  | S.ADD | S.SUB | S.MUL | S.DIV | S.MOD | S.POW
+  | S.GT | S.LT | S.GE | S.LE | S.EQ | S.NEQ -> true
+  | _ -> false
+
+(** Operations on two numeric types neither of which converts to the other
+    without loss, e.g. DINT and REAL, or INT and UINT. *)
+let check_operands env elem =
+  (* Call arguments are separate expressions in [get_pou_exprs]. *)
+  let rec check acc = function
+    | S.ExprBin (ti, l, op, r) ->
+      let acc = check (check acc l) r in
+      begin match converting op, T.type_of env l, T.type_of env r with
+        | true, T.Elem a, T.Elem b -> begin
+            match T.num_of a, T.num_of b with
+            | Some x, Some y when not (T.fits x y) && not (T.fits y x) ->
+              warn ti (Printf.sprintf
+                         "Implicit conversion between %s and %s may lose value or precision; \
+                          convert one operand explicitly"
+                         (S.ety_to_string a) (S.ety_to_string b)) :: acc
+            | _ -> acc
+          end
+        | _ -> acc
+      end
+    | S.ExprUn (_, _, e) -> check acc e
+    | S.ExprVariable _ | S.ExprConstant _ | S.ExprFuncCall _ -> acc
+  in
+  AU.get_pou_exprs elem |> List.fold ~init:[] ~f:check |> List.rev
+(* }}} *)
+
+let check_elem elements elem =
+  let env = T.env_of elements elem in
+  check_assignments env elem @ check_arguments elements env elem @ check_operands env elem
+
+let do_check elements =
+  List.concat_map elements ~f:(function
+      | S.IECProgram _ | S.IECFunctionBlock _ | S.IECFunction _ as e -> check_elem elements e
+      | _ -> [])
+  |> List.sort ~compare:(fun (a : Warn.t) (b : Warn.t) ->
+      Tuple2.compare ~cmp1:Int.compare ~cmp2:Int.compare (a.linenr, a.column) (b.linenr, b.column))
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP25";
   name = "Data type conversion should be explicit";
   summary =
-    "Implicit casts between integer and floating-point types are forbidden.";
+    "Implicit conversions that may lose value or precision should be explicit.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP25";
   severity = IECCheckerCore.Warn.Medium;
   plcopen_importance = Some IECCheckerCore.Warn.Medium;
-  check = (fun (i : Detector.inputs) -> do_check i.elements i.envs);
+  check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

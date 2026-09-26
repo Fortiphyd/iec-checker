@@ -26,6 +26,9 @@ val type_of : env -> S.expr -> t
 
 val var_type : env -> S.VarUse.t -> t
 
+val type_of_spec : env -> S.derived_ty_decl_spec -> t
+(** Type of values declared with the given specification. *)
+
 (** {2 Numeric types} *)
 
 (** Signed and unsigned integers with their width in bits, and reals with the

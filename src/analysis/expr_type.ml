@@ -62,6 +62,8 @@ and of_single env depth = function
     end
   | _ -> Unknown
 
+let type_of_spec env spec = of_spec env 0 spec
+
 (** Specification of a type by name, following aliases. *)
 let rec named_spec env depth name =
   match Map.find env.types name with
