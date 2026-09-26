@@ -123,3 +123,36 @@ def test_sarif_min_severity():
     doc, _ = run_sarif([CP12], args=['--min-severity', 'high'])
     assert {r['ruleId'] for r in doc['runs'][0]['results']} == {'PLCOPEN-CP12'}
 # }}}
+
+
+# {{{ Columns
+def region_text(f, region):
+    with open(f) as fp:
+        line = fp.read().splitlines()[region['startLine'] - 1]
+    return line[region['startColumn'] - 1:region['endColumn'] - 1]
+
+
+def test_sarif_region_covers_token():
+    doc, _ = run_sarif([CP12])
+    regions = {
+        r['locations'][0]['physicalLocation']['region']['startLine']:
+        r['locations'][0]['physicalLocation']['region']
+        for r in doc['runs'][0]['results'] if r['ruleId'] == 'PLCOPEN-CP12'}
+    assert region_text(CP12, regions[48]) == 'g_valve'
+    assert region_text(CP12, regions[32]) == '%QW1'
+
+
+def test_json_start_column():
+    warns, _ = run([CP12])
+    [w] = [w for w in warns if w.id == 'PLCOPEN-CP12' and w.linenr == 48]
+    # g_valve on "  g_valve := alarm;": columns of its first and last characters.
+    assert (w.start_column, w.column) == (3, 9)
+
+
+def test_parser_error_start_column(tmp_path):
+    f = tmp_path / 'bad.st'
+    f.write_text('PROGRAM p\nVAR y : %IW2; END_VAR\nEND_PROGRAM\n')
+    p = subprocess.run([binary_default, '-o', 'sarif', str(f)], capture_output=True, text=True)
+    [r] = json.loads(p.stdout)['runs'][0]['results']
+    assert region_text(str(f), r['locations'][0]['physicalLocation']['region']) == '%IW2'
+# }}}

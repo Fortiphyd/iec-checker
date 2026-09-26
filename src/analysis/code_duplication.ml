@@ -275,7 +275,7 @@ let duplicate_warnings clones =
           (if Int.equal c.b.first c.b.last then "duplicates" else "duplicate")
           (lines c.a) (in_pou c)
       in
-      Warn.mk c.b.start_ti.linenr c.b.start_ti.col "DuplicateCode" text)
+      Warn.mk_at c.b.start_ti "DuplicateCode" text)
 
 let is_word_char c = Char.is_alphanum c
 
@@ -353,7 +353,7 @@ let inconsistent_warnings clones =
                   b (lines orig) (if String.equal orig.pou copy.pou then "" else " in " ^ orig.pou)
                   from to_ expected
               in
-              Some (Warn.mk ti.linenr ti.col "InconsistentCopy" text)
+              Some (Warn.mk_at ti "InconsistentCopy" text)
             end)
       in
       report c.a c.b (inconsistent_names c.a_names c.b_names)

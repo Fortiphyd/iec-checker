@@ -679,7 +679,7 @@ let to_warning fd =
     Printf.sprintf "Output %s is driven by untrusted %s without a bounds check%s"
       fd.sink (String.concat ~sep:", " (Set.to_list fd.tainted_by)) via
   in
-  Warn.mk fd.at.linenr fd.at.col "TaintedVariable" text
+  Warn.mk_at fd.at "TaintedVariable" text
 
 let run elements =
   let env = {

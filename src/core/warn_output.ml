@@ -63,8 +63,14 @@ let sarif_result (w : W.t) =
   (* Line 0 means the warning has no position. *)
   let region =
     if w.linenr > 0 then
-      ["region", `Assoc (["startLine", `Int w.linenr]
-                         @ (if w.column > 0 then ["startColumn", `Int w.column] else []))]
+      let columns =
+        if w.start_column > 0 && w.column >= w.start_column then
+          (* SARIF's end column is the one after the region. *)
+          ["startColumn", `Int w.start_column; "endColumn", `Int (w.column + 1)]
+        else if w.column > 0 then ["startColumn", `Int w.column]
+        else []
+      in
+      ["region", `Assoc (["startLine", `Int w.linenr] @ columns)]
     else []
   in
   let locations =

@@ -205,4 +205,4 @@ let run elements =
       if Hash_set.mem seen key then false else (Hash_set.add seen key; true))
   |> List.sort ~compare:(fun ((a : TI.t), _) ((b : TI.t), _) ->
       Tuple2.compare ~cmp1:Int.compare ~cmp2:Int.compare (a.linenr, a.col) (b.linenr, b.col))
-  |> List.map ~f:(fun ((ti : TI.t), msg) -> Warn.mk ti.linenr ti.col "MultiTaskWrite" msg)
+  |> List.map ~f:(fun ((ti : TI.t), msg) -> Warn.mk_at ti "MultiTaskWrite" msg)

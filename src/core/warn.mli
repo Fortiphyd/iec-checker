@@ -19,12 +19,23 @@ type t = {
   file: string;
   id: string;
   msg: string;
+  start_column: int;
+  (** Column of the first character of the reported token; [column] is the
+      column of its last one. *)
   context: string;
   ty: warn_ty [@key "type"];
   severity: severity;
 } [@@deriving yojson]
 
-val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> int -> int -> string -> string -> t
+val mk : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> ?start_column:int -> int -> int -> string -> string -> t
+(** [mk linenr column id msg]. [start_column] defaults to [column]. *)
+
+val mk_for_name : ?severity:(severity) -> name:string -> int -> int -> string -> string -> t
+(** [mk_for_name ~name linenr column id msg] A warning about the identifier
+    [name] ending at [column]. *)
+
+val mk_at : ?ty:(warn_ty) -> ?file:(string) -> ?context:(string) -> ?severity:(severity) -> Tok_info.t -> string -> string -> t
+(** [mk_at ti id msg] A warning at the token [ti]. *)
 val mk_internal : ?id:(string) -> string -> t
 val mk_from_lexbuf : ?context:(string) -> Lexing.lexbuf -> string -> string -> t
 

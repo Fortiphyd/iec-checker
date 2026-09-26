@@ -37,7 +37,7 @@ let check_elem elements elem =
           Printf.sprintf "Arithmetic on %s and %s; convert one operand explicitly"
             (T.to_string tl) (T.to_string tr)
         in
-        Warn.mk ti.linenr ti.col "MixedTypeArithmetic" msg :: acc
+        Warn.mk_at ti "MixedTypeArithmetic" msg :: acc
       else acc
     | S.ExprUn (_, _, e) -> check acc e
     | S.ExprVariable _ | S.ExprConstant _ | S.ExprFuncCall _ -> acc

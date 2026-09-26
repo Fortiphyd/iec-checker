@@ -101,7 +101,7 @@ let check_elem elem =
                   (S.DirVar.get_name dir_var) (get_ty_size ty)
                   (S.DirVar.get_name overlapped_dir_var)
               in
-              Warn.mk ti.linenr ti.col "PLCOPEN-CP4" msg)))
+              Warn.mk_at ti "PLCOPEN-CP4" msg)))
 
 let do_check elems =
   List.fold_left elems ~init:[] ~f:(fun acc elem -> acc @ (check_elem elem))

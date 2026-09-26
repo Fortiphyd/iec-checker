@@ -99,7 +99,7 @@ let check_elem globals elem =
         Printf.sprintf "Physical output %s is written more than once per PLC cycle: %s"
           r.event.shown where
       in
-      Warn.mk r.event.ti.linenr r.event.ti.col "PLCOPEN-CP12" msg)
+      Warn.mk_at r.event.ti "PLCOPEN-CP12" msg)
 
 let do_check elements =
   let globals = global_outputs elements in

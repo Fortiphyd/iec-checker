@@ -71,7 +71,7 @@ let do_check elems =
         let msg = Printf.sprintf
             "Name %s is used for multiple element kinds" o.name
         in
-        Some (Warn.mk o.linenr o.col "PLCOPEN-N9" msg)
+        Some (Warn.mk_for_name ~name:o.name o.linenr o.col "PLCOPEN-N9" msg)
       else None)
 
 let detector : Detector.t = {

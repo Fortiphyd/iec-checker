@@ -17,7 +17,7 @@ let check_elem elem =
                   let ti = S.VarDecl.get_var_ti var_decl
                   and msg = "External variables in functions, function blocks and classes should be avoided"
                   in
-                  acc @ [(Warn.mk ti.linenr ti.col "PLCOPEN-CP6" msg)]
+                  acc @ [(Warn.mk_at ti "PLCOPEN-CP6" msg)]
                 end
               | _ -> acc
             end)

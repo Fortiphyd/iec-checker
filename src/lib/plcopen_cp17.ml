@@ -138,7 +138,7 @@ let check_pou elem =
           let is_read = Set.mem read_set name in
           let is_written = Set.mem write_set name in
           let mk_warn msg =
-            W.mk ti.linenr ti.col "PLCOPEN-CP17" msg
+            W.mk_at ti "PLCOPEN-CP17" msg
           in
           begin match kind with
             | PInput ->

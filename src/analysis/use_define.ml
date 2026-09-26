@@ -66,7 +66,7 @@ let check_array_out_of_bounds (decl_map : VarDeclMap.t) (use_map : VarUseMap.t) 
                   Printf.sprintf "%s index %d is out of range [%d .. %d]"
                     name idx_value sr.arr_lower sr.arr_upper
                 in
-                [Warn.mk ti.linenr ti.col "OutOfBounds" text]
+                [Warn.mk_at ti "OutOfBounds" text]
               end else []
             end
           | None (* opaque index *) -> []
@@ -78,7 +78,7 @@ let check_array_out_of_bounds (decl_map : VarDeclMap.t) (use_map : VarUseMap.t) 
             Printf.sprintf "%s is addressed to %d dimension, but array was defined with %d dimensions"
               name (idx_num + 1) (List.length decl_subranges)
           in
-          [Warn.mk ti.linenr ti.col "OutOfBounds" text]
+          [Warn.mk_at ti "OutOfBounds" text]
         end
     in
     match S.VarUse.get_loc var_use with

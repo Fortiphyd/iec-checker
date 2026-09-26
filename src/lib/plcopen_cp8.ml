@@ -23,7 +23,7 @@ let check_elem elements elem =
       begin match op with
         | S.EQ | S.NEQ when is_float env lhs || is_float env rhs ->
           let msg = "Floating point comparison shall not be equality or inequality" in
-          Warn.mk ti.linenr ti.col "PLCOPEN-CP8" msg :: acc
+          Warn.mk_at ti "PLCOPEN-CP8" msg :: acc
         | _ -> acc
       end
     | S.ExprUn (_, _, e) -> check acc e

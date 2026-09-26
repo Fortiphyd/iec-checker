@@ -26,7 +26,7 @@ let check_elem globals elem =
           let msg = Printf.sprintf
               "Local name %s shadows a global variable" name
           in
-          Some (Warn.mk ti.linenr ti.col "PLCOPEN-N5" msg)
+          Some (Warn.mk_at ti "PLCOPEN-N5" msg)
         else None)
 
 let do_check elems =

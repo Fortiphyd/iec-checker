@@ -9,7 +9,7 @@ let do_check elems =
     ~init:[]
     ~f:(fun acc s -> begin
           match s with
-          | S.StmContinue ti | S.StmExit ti -> acc @ [Warn.mk ti.linenr ti.col "PLCOPEN-L10" "Usage of CONTINUE and EXIT instruction should be avoid"]
+          | S.StmContinue ti | S.StmExit ti -> acc @ [Warn.mk_at ti "PLCOPEN-L10" "Usage of CONTINUE and EXIT instruction should be avoid"]
           | _ -> acc
         end)
 

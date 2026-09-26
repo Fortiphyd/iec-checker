@@ -20,7 +20,7 @@ let is_int = function T.Signed _ | T.Unsigned _ -> true | T.Float _ -> false
 let check_assign env lhs rhs =
   let name = S.VarUse.get_name lhs in
   let ti = S.VarUse.get_ti lhs in
-  let warn msg = Some (Warn.mk ti.linenr ti.col "NarrowingAssignment" msg) in
+  let warn msg = Some (Warn.mk_at ti "NarrowingAssignment" msg) in
   match T.var_type env lhs with
   | T.Elem dst_ty -> begin
       match T.num_of dst_ty, T.type_of env rhs with

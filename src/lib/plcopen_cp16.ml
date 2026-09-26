@@ -24,7 +24,7 @@ let check_elem fb_names = function
                   "Task should call PROGRAM, not FUNCTION_BLOCK '%s'"
                   tn
               in
-              Some (Warn.mk ti.linenr ti.col "PLCOPEN-CP16" msg)
+              Some (Warn.mk_at ti "PLCOPEN-CP16" msg)
             | _ -> None))
   | _ -> []
 

@@ -16,7 +16,7 @@ let check_elem elem =
             "Avoid hardcoded physical address %s in code"
             (S.DirVar.get_name dv)
         in
-        Some (Warn.mk ti.linenr ti.col "PLCOPEN-N1" msg)
+        Some (Warn.mk_at ti "PLCOPEN-N1" msg)
       | S.VarUse.SymVar _ -> None)
 
 let do_check elems =

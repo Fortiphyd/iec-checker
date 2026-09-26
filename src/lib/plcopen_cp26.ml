@@ -65,7 +65,7 @@ let do_check elems =
                    PROGRAM (already written in '%s')"
                   var_name first_prog
               in
-              acc @ [Warn.mk ti.linenr ti.col "PLCOPEN-CP26" msg]))
+              acc @ [Warn.mk_at ti "PLCOPEN-CP26" msg]))
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP26";

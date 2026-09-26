@@ -49,7 +49,7 @@ and find_in_expr var_name = function
         "Loop variable '%s' should not be modified inside a FOR loop"
         var_name
     in
-    [Warn.mk ti.linenr ti.col "PLCOPEN-L22" msg]
+    [Warn.mk_at ti "PLCOPEN-L22" msg]
   | _ -> []
 
 (** Recursively walk statements to find FOR loops at any nesting depth

@@ -18,7 +18,7 @@ let check_name name linenr col =
         "Identifier %s contains characters outside [A-Za-z_][A-Za-z0-9_]*"
         name
     in
-    Some (Warn.mk linenr col "PLCOPEN-N8" msg)
+    Some (Warn.mk_for_name ~name linenr col "PLCOPEN-N8" msg)
 
 let pou_name_and_loc = function
   | S.IECFunction (_, f) ->

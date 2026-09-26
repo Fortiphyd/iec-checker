@@ -30,7 +30,7 @@ let check_elem elem =
         Printf.sprintf "Function block instance %s is called more than once per PLC cycle: %s"
           r.event.shown where
       in
-      Warn.mk r.event.ti.linenr r.event.ti.col "PLCOPEN-CP20" msg)
+      Warn.mk_at r.event.ti "PLCOPEN-CP20" msg)
 
 let do_check elements =
   List.concat_map elements ~f:(function

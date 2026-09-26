@@ -25,7 +25,7 @@ let check_elem elements elem =
       begin match op with
         | S.EQ | S.NEQ when is_time env lhs || is_time env rhs ->
           let msg = "Time and physical measures comparisons shall not be equality or inequality" in
-          Warn.mk ti.linenr ti.col "PLCOPEN-CP28" msg :: acc
+          Warn.mk_at ti "PLCOPEN-CP28" msg :: acc
         | _ -> acc
       end
     | S.ExprUn (_, _, e) -> check acc e

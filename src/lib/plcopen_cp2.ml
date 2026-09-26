@@ -8,7 +8,7 @@ module S = Syntax
 (** Generate warning for a given basic block *)
 let mk_warn (bb : Cfg.bb) : Warn.t =
   let ti = Cfg.bb_get_ti bb in
-  Warn.mk ti.linenr ti.col "PLCOPEN-CP2" "All code shall be used in the application"
+  Warn.mk_at ti "PLCOPEN-CP2" "All code shall be used in the application"
 
 (** Find basic blocks inside the loop statements that are unreachable after
     CONTINUE/EXIT blocks. *)

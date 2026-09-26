@@ -49,7 +49,7 @@ let check_elem elem =
                     let ti = S.DirVar.get_ti d
                     and msg = Printf.sprintf "Access to a member %s shall be by name" @@ S.DirVar.get_name d
                     in
-                    acc @ [Warn.mk ti.linenr ti.col "PLCOPEN-CP1" msg]
+                    acc @ [Warn.mk_at ti "PLCOPEN-CP1" msg]
                   else
                     acc
                 end)

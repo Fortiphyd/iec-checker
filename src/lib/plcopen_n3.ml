@@ -175,7 +175,7 @@ let check_name var =
   match m with
   | Some _ ->
     let msg = "IEC data types and standard library objects must be avoided" in
-    let w = Warn.mk ti.linenr ti.col "PLCOPEN-N3" msg in
+    let w = Warn.mk_at ti "PLCOPEN-N3" msg in
     Some w
   | None -> None
 

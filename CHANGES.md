@@ -45,6 +45,7 @@
 - Add `PLCOpen-CP20` (#49)
 - Severity levels for all checks and the `--min-severity` CLI option (#76)
 - SARIF 2.1.0 output format (`-o sarif`)
+- Record where tokens start: warnings get a `start_column`, SARIF regions cover the reported token, and directly represented variables span the whole address
 - `MultiTaskWrite`: outputs and globals written by programs in different tasks
 - Expression typing module (#71)
 - `NarrowingAssignment`: values that may not fit in the assigned variable (#73)
