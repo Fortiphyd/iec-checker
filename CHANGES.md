@@ -16,7 +16,7 @@ Changes of the Fortiphyd fork:
 - Columns count characters, and warnings report where tokens start
 - `--version`
 - Documentation in `docs/`, linked from warnings
-- Release builds for Linux, macOS and Windows, and Docker images on the GitHub Container Registry
+- Release builds for Linux and macOS, and Docker images on the GitHub Container Registry
 
 Changes of iec-checker:
 

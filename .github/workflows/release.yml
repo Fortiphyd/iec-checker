@@ -36,9 +36,9 @@ jobs:
           - os: macos-14
             target: macos-arm64
             profile: dev
-          - os: windows-latest
-            target: windows-x86_64
-            profile: release
+          # No Windows build: core's base_bigstring doesn't build on Windows
+          # (it uses memmem, which MinGW lacks, and v0.17 is marked
+          # unavailable there). The static Linux binary runs under WSL.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -79,11 +79,7 @@ jobs:
           cp _build/install/default/bin/iec_checker* "dist/$name/"
           cp -r LICENSE README.md CHANGES.md iec_checker.example.json docs "dist/$name/"
           cd dist
-          if [ "$RUNNER_OS" = Windows ]; then
-            7z a "$name.zip" "$name" > /dev/null
-          else
-            tar czf "$name.tar.gz" "$name"
-          fi
+          tar czf "$name.tar.gz" "$name"
           rm -r "$name"
           ls -l
 

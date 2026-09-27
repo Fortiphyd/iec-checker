@@ -64,13 +64,16 @@ extensions of CODESYS and TwinCAT (`POINTER TO`, `__NEW`).
 
 ## Installation
 
-Download a binary for Linux, macOS or Windows from the
+Download a binary for Linux or macOS from the
 [releases](https://github.com/Fortiphyd/iec-checker/releases), or use the
 Docker image:
 
 ```bash
 docker run --rm -v "$PWD:/src" -w /src ghcr.io/fortiphyd/iec-checker:latest program.st
 ```
+
+There is no native Windows binary for now, as a library we depend on doesn't
+support Windows. Use the Linux binary under WSL, or the Docker image.
 
 ### Building from source
 

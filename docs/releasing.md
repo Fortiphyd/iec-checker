@@ -19,8 +19,7 @@ The tag must match the version in `dune-project`, or the build fails.
 Pushing the tag runs two workflows:
 
 - **Release** (`.github/workflows/release.yml`) builds the binaries for
-  Linux x86_64 (static), macOS arm64 and Windows x86_64, checks that each
-  runs, and publishes a GitHub release with an archive for each platform and
+  Linux x86_64 (static) and macOS arm64, checks that each runs, and publishes a GitHub release with an archive for each platform and
   their `SHA256SUMS`. Each archive has the binary, the license, the README,
   the changelog, the example configuration and these docs. The release notes
   are generated from the commits since the previous release; edit them on
