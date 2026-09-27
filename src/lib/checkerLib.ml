@@ -45,6 +45,9 @@ let registered_detectors : Detector.t list = [
   Plcopen_n8.detector;
   Plcopen_n9.detector;
   Plcopen_n10.detector;
+  Plcopen_e1.detector;
+  Plcopen_e2.detector;
+  Plcopen_e3.detector;
   Mixed_type_arithmetic.detector;
 ]
 

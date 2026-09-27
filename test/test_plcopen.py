@@ -753,3 +753,22 @@ def test_cp2_library_not_reported():
     with DumpManager(f'{f}.dump.json'):
         pass
     assert not [w for w in filter_warns(warns, 'PLCOPEN-CP2') if 'never used' in w.msg]
+
+
+def test_e_rules():
+    """E1: dynamic allocation; E2: pointer arithmetic; E3: ordering
+    comparisons of pointers, as in the rule's example."""
+    f = 'st/plcopen-e.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    with open(f) as fp:
+        lines = fp.readlines()
+    for rule in ['PLCOPEN-E1', 'PLCOPEN-E2', 'PLCOPEN-E3']:
+        expected = [i for i, line in enumerate(lines, 1) if f'(* {rule} *)' in line]
+        assert sorted(w.linenr for w in filter_warns(warns, rule)) == expected, rule
+    msgs = {(w.id, w.linenr): w.msg for w in warns}
+    assert msgs[('PLCOPEN-E1', 25)] == ('Dynamic memory allocation shall not be used: '
+                                        '__NEW allocates memory at run time')
+    assert msgs[('PLCOPEN-E3', 45)].endswith('not >=')
