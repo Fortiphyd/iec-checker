@@ -41,6 +41,9 @@ type t = {
   naming_max_length    : int;
   naming_udt_prefixes  : (string * string) list; (** Keys are among {!udt_kinds} *)
   naming_scope_prefixes : (string * string) list; (** Keys are among {!scopes} *)
+  naming_allow_non_ascii : bool;
+  (** Allow characters outside ASCII in names, such as a national character
+      set (PLCopen N8) *)
 }
 
 val default : t

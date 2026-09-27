@@ -33,6 +33,7 @@ type t = {
   naming_max_length    : int;
   naming_udt_prefixes  : (string * string) list;
   naming_scope_prefixes : (string * string) list;
+  naming_allow_non_ascii : bool;
 }
 
 let default = {
@@ -63,6 +64,7 @@ let default = {
   naming_max_length    = 0;
   naming_udt_prefixes  = [];
   naming_scope_prefixes = [];
+  naming_allow_non_ascii = false;
 }
 
 (* ---------- Naming conventions ------------------------------------------- *)
@@ -206,6 +208,8 @@ let of_yojson (json : Yojson.Safe.t) : (t, string) result =
       naming_max_length    = int_field naming "max_length" ~default:default.naming_max_length;
       naming_udt_prefixes  = prefix_map_field ~allowed:udt_kinds naming "udt_prefixes";
       naming_scope_prefixes = prefix_map_field ~allowed:scopes naming "scope_prefixes";
+      naming_allow_non_ascii =
+        bool_field naming "allow_non_ascii" ~default:default.naming_allow_non_ascii;
     }
   with
   | Invalid msg -> Error msg
@@ -260,6 +264,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
       "max_length", `Int c.naming_max_length;
       "udt_prefixes", string_map_to_json c.naming_udt_prefixes;
       "scope_prefixes", string_map_to_json c.naming_scope_prefixes;
+      "allow_non_ascii", `Bool c.naming_allow_non_ascii;
     ];
   ]
 

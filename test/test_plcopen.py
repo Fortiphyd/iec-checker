@@ -378,9 +378,31 @@ def test_n8():
     fdump = f'{f}.dump.json'
     warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(warns, 'PLCOPEN-N8')) == 0
+    ws = filter_warns(warns, 'PLCOPEN-N8')
+    with open(f, encoding='utf-8') as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* PLCOPEN-N8 *)' in line]
+    assert sorted(w.linenr for w in ws) == expected
+    by_line = {w.linenr: w for w in ws}
+    assert by_line[14].msg == ('Identifier départ contains characters outside ASCII '
+                               'letters, digits and underscores (é)')
+    # Columns count characters, not bytes.
+    assert (by_line[14].start_column, by_line[14].column) == (5, 10)
+    assert by_line[16].msg == 'Identifier double__underscore contains consecutive underscores'
+    assert by_line[17].msg == 'Identifier trailing_ contains a trailing underscore'
     with DumpManager(fdump):
         pass
+
+
+def test_n8_national_character_set(tmp_path):
+    """With allow_non_ascii, only the underscores are reported."""
+    cfg = tmp_path / 'c.json'
+    cfg.write_text(json.dumps({'naming_conventions': {'allow_non_ascii': True}}))
+    f = 'st/plcopen-n8.st'
+    warns, rc = run_checker([f], args=['-c', str(cfg)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-N8')) == [16, 17, 29]
 
 
 def test_n9():
