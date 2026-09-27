@@ -232,12 +232,24 @@ let merge_files paths out_path =
     Out_channel.output_string oc (In_channel.read_all path));
   Out_channel.close_no_err oc
 
-(** Check whether an analysis pass is enabled in the current configuration. *)
+(** Built-in passes that implement PLCopen rules, with the rule and its
+    importance. *)
+let builtin_plcopen = [
+  ("MultiTaskWrite", ("PLCOPEN-CP10", W.High));
+  ("UnusedVariable", ("PLCOPEN-CP24", W.Medium));
+]
+
+let plcopen_of_builtin id = List.Assoc.find builtin_plcopen id ~equal:String.equal
+
+(** Check whether an analysis pass is enabled in the current configuration.
+    A pass that implements a PLCopen rule can be named by the rule too. *)
 let pass_enabled id =
   let cfg = Config.get () in
+  let names = id :: Option.to_list (Option.map (plcopen_of_builtin id) ~f:fst) in
+  let named ids = List.exists names ~f:(List.mem ids ~equal:String.equal) in
   match cfg.enabled_detectors with
-  | _ :: _ as ids -> List.mem ids id ~equal:String.equal
-  | [] -> not (List.mem cfg.disabled_detectors id ~equal:String.equal)
+  | _ :: _ as ids -> named ids
+  | [] -> not (named cfg.disabled_detectors)
 
 (** [run_checker] Run program on the file with [path] and returns the
     error code. *)
@@ -303,9 +315,14 @@ let finalize ws =
   let min = W.severity_rank (parse_min_severity cfg.min_severity) in
   let min_importance = parse_min_importance cfg.min_plcopen_importance in
   List.map ws ~f:(fun w ->
+      let plcopen =
+        match detector_of w with
+        | Some d -> Option.map d.Detector.plcopen_importance ~f:(fun imp -> (d.id, imp))
+        | None -> plcopen_of_builtin w.W.id
+      in
       { w with W.severity = severity_of w;
-               plcopen_importance =
-                 Option.bind (detector_of w) ~f:(fun d -> d.Detector.plcopen_importance) })
+               plcopen_importance = Option.map plcopen ~f:snd;
+               plcopen_rule = Option.map plcopen ~f:fst })
   |> List.filter ~f:(fun w ->
       is_error w
       || (W.severity_rank w.W.severity >= min
@@ -350,10 +367,13 @@ let char_columns ws =
 let sarif_rules () =
   List.map Lib.registered_detectors ~f:(fun d ->
       WO.{ rule_id = d.Detector.id; rule_name = d.name; help_url = d.doc_url;
-           rule_severity = d.severity; rule_plcopen_importance = d.plcopen_importance })
+           rule_severity = d.severity; rule_plcopen_importance = d.plcopen_importance;
+           rule_plcopen_rule = Option.map d.plcopen_importance ~f:(fun _ -> d.id) })
   @ List.map builtin_warnings ~f:(fun (id, name, sev) ->
+      let plcopen = plcopen_of_builtin id in
       WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev;
-           rule_plcopen_importance = None })
+           rule_plcopen_importance = Option.map plcopen ~f:snd;
+           rule_plcopen_rule = Option.map plcopen ~f:fst })
 
 (* JSON and SARIF output is a single document for all input files, so their
    warnings are collected and printed at exit. *)
@@ -452,7 +472,11 @@ let print_list_checks () =
         (d.Detector.id, W.severity_to_string d.Detector.severity,
          Option.value_map d.Detector.plcopen_importance ~default:"-" ~f:W.severity_to_string,
          d.Detector.name))
-    @ List.map builtin_passes ~f:(fun (id, name, sev) -> (id, W.severity_to_string sev, "-", name))
+    @ List.map builtin_passes ~f:(fun (id, name, sev) ->
+        match plcopen_of_builtin id with
+        | Some (rule, imp) ->
+          (id, W.severity_to_string sev, W.severity_to_string imp, Printf.sprintf "%s (%s)" name rule)
+        | None -> (id, W.severity_to_string sev, "-", name))
   in
   let id_width =
     List.fold_left all_ids ~init:0 ~f:(fun acc (id, _, _, _) ->

@@ -12,6 +12,7 @@ type rule = {
   help_url : string;
   rule_severity : W.severity;
   rule_plcopen_importance : W.severity option;
+  rule_plcopen_rule : string option;
 }
 
 (* ANSI escape helpers *)
@@ -24,8 +25,15 @@ let format_plain_warning doc_urls use_color (w : W.t) =
   | W.InternalError ->
     Printf.sprintf "%s: %s" (bold w.id use_color) w.msg
   | W.Inspection ->
+    (* A check that implements a PLCopen rule under another name *)
+    let rule =
+      match w.plcopen_rule with
+      | Some r when not (String.equal r w.id) -> Printf.sprintf " (%s)" r
+      | _ -> ""
+    in
     let header =
-      Printf.sprintf "%s [%s]: %s" (bold w.id use_color) (W.severity_to_string w.severity) w.msg
+      Printf.sprintf "%s%s [%s]: %s" (bold w.id use_color) rule
+        (W.severity_to_string w.severity) w.msg
     in
     let location =
       if String.is_empty w.file then
@@ -53,9 +61,14 @@ let sarif_level = function
 
 let sarif_uri path = String.map path ~f:(function '\\' -> '/' | c -> c)
 
-let importance_property = function
-  | Some imp -> ["properties", `Assoc ["plcopen-importance", `String (W.severity_to_string imp)]]
-  | None -> []
+let plcopen_properties importance rule =
+  match
+    Option.to_list (Option.map importance ~f:(fun imp ->
+        ("plcopen-importance", `String (W.severity_to_string imp))))
+    @ Option.to_list (Option.map rule ~f:(fun r -> ("plcopen-rule", `String r)))
+  with
+  | [] -> []
+  | props -> ["properties", `Assoc props]
 
 let sarif_rule r =
   `Assoc ([
@@ -63,7 +76,7 @@ let sarif_rule r =
       "shortDescription", `Assoc ["text", `String r.rule_name];
       "defaultConfiguration", `Assoc ["level", `String (sarif_level r.rule_severity)];
     ] @ (if String.is_empty r.help_url then [] else ["helpUri", `String r.help_url])
-    @ importance_property r.rule_plcopen_importance)
+    @ plcopen_properties r.rule_plcopen_importance r.rule_plcopen_rule)
 
 let sarif_result (w : W.t) =
   (* Line 0 means the warning has no position. *)
@@ -89,7 +102,7 @@ let sarif_result (w : W.t) =
       "ruleId", `String w.id;
       "level", `String (sarif_level w.severity);
       "message", `Assoc ["text", `String w.msg];
-    ] @ locations @ importance_property w.plcopen_importance)
+    ] @ locations @ plcopen_properties w.plcopen_importance w.plcopen_rule)
 
 let sarif_report rules warnings : Yojson.Safe.t =
   `Assoc [

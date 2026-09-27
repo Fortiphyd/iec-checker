@@ -260,3 +260,19 @@ def test_output_connected_to_global_is_cp26(tmp_path):
     with DumpManager(f'{f}.dump.json'):
         pass
     assert len(filter_warns(warns, 'PLCOPEN-CP26')) == 1
+
+
+def test_disabled_by_plcopen_id(tmp_path):
+    """MultiTaskWrite implements PLCopen CP10 and can be named by it."""
+    import json
+    f = tmp_path / 'input.st'
+    f.write_text(config(TWO_TASKS) + program('prog_a', '  g := 1;') + program('prog_b', '  g := 2;'))
+    cfg = tmp_path / 'c.json'
+    cfg.write_text(json.dumps({'detectors': {'disabled': ['PLCOPEN-CP10']}}))
+    warns, rc = run_checker([str(f)], args=['-c', str(cfg)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert filter_warns(warns, 'MultiTaskWrite') == []
+    warns, _ = run_checker([str(f)])
+    assert {w.plcopen_rule for w in filter_warns(warns, 'MultiTaskWrite')} == {'PLCOPEN-CP10'}
