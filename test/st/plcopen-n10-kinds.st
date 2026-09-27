@@ -1,0 +1,35 @@
+TYPE EColor : (Red, Green); END_TYPE
+TYPE Error : (Minor, Major); END_TYPE   (* PLCOPEN-N10 *)
+TYPE EN_Level : INT (Low := 1, High := 2); END_TYPE
+TYPE ELevel : INT (Low2 := 1, High2 := 2); END_TYPE   (* PLCOPEN-N10 *)
+TYPE STPoint : STRUCT x : INT; END_STRUCT; END_TYPE
+TYPE T_Speed : REAL; END_TYPE
+TYPE Speed2 : REAL; END_TYPE   (* PLCOPEN-N10 *)
+
+FUNCTION FUScale : INT
+  FUScale := 1;
+END_FUNCTION
+
+FUNCTION Scale : INT   (* PLCOPEN-N10 *)
+  Scale := 1;
+END_FUNCTION
+
+FUNCTION_BLOCK FBPump
+  VAR x : INT; END_VAR
+  x := 1;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK FBpump2   (* PLCOPEN-N10 *)
+  VAR x : INT; END_VAR
+  x := 1;
+END_FUNCTION_BLOCK
+
+PROGRAM PRGMain
+  VAR x : INT; END_VAR
+  x := 1;
+END_PROGRAM
+
+PROGRAM Main   (* PLCOPEN-N10 *)
+  VAR x : INT; END_VAR
+  x := 1;
+END_PROGRAM

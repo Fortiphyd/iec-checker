@@ -1,0 +1,4 @@
+{
+  "detectors": { "enabled": ["PLCOPEN-N6"] },
+  "naming_conventions": { "min_length": 8, "min_length_local": 3, "max_length": 25 }
+}

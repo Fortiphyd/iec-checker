@@ -25,16 +25,38 @@ type t = {
 
   (* Naming conventions; for PLCOpen-N detectors *)
   naming_type_prefixes : (string * string) list;
+  (** Prefixes by type: elementary types, kinds of user-defined types
+      (STRUCT, ENUM, ...), FUNCTION_BLOCK, or names of user-defined types *)
   naming_case_variable : string option;
   naming_case_constant : string option;
   naming_case_pou      : string option;
   naming_case_type     : string option;
+  naming_case_member   : string option;
+  (** For struct members; the variable style if not set *)
+  naming_case_enum_value : string option;
+  (** For enum values; the constant style if not set *)
   naming_min_length    : int;
+  naming_min_length_local : int;
+  (** For local variables of POUs; [naming_min_length] if 0 *)
   naming_max_length    : int;
-  naming_udt_prefixes  : (string * string) list;
+  naming_udt_prefixes  : (string * string) list; (** Keys are among {!udt_kinds} *)
+  naming_scope_prefixes : (string * string) list; (** Keys are among {!scopes} *)
 }
 
 val default : t
+
+val case_styles : string list
+(** Case styles of naming conventions. *)
+
+val udt_kinds : string list
+(** Keys of the prefixes of user-defined types and POUs. *)
+
+val scopes : string list
+(** Keys of the prefixes of variables by scope. *)
+
+val canonical_type_key : string -> string
+(** Upper-cased key of a prefix, with long names for types that have two:
+    TOD is TIME_OF_DAY. *)
 (** Default configuration — matches the original hardcoded values. *)
 
 val set : t -> unit

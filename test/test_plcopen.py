@@ -6,7 +6,7 @@ from collections import Counter
 
 sys.path.append(os.path.join(os.path.dirname(
     os.path.abspath(__file__)), "../src"))
-from python.core import run_checker, filter_warns  # noqa
+from python.core import run_checker, run_checker_full_out, binary_default, filter_warns  # noqa
 from python.dump import DumpManager  # noqa
 
 
@@ -409,6 +409,73 @@ def test_n10():
     assert len(filter_warns(warns, 'PLCOPEN-N10')) == 2
     with DumpManager(fdump):
         pass
+
+
+# {{{ Naming conventions: annotated samples with their configurations
+def check_annotated(sample, rule):
+    """Run [sample] with its configuration and assert the reported lines of
+    [rule] are exactly those marked ``(* <rule> *)``; return the warnings."""
+    f = f'st/{sample}.st'
+    warns, rc = run_checker([f], args=['-c', f'st/{sample}.config.json'])
+    assert rc == 0, warns
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    ws = filter_warns(warns, rule)
+    marker = f'(* {rule} *)'
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if marker in line]
+    assert sorted(w.linenr for w in ws) == expected
+    return {w.linenr: w.msg for w in ws}
+
+
+def test_n2_scopes_and_kinds():
+    """Scope and type prefixes combine; prefixes end at a word boundary;
+    arrays, structs, enums, FB instances and aliases have prefixes too."""
+    msgs = check_annotated('plcopen-n2-scopes', 'PLCOPEN-N2')
+    assert msgs[9] == 'Variable xEnable (input, of type BOOL) should start with prefix "px"'
+    assert msgs[17] == 'Variable xylophone (of type BOOL) should start with prefix "x"'
+    assert msgs[53] == 'Variable level (global, of type INT) should start with prefix "gi"'
+
+
+def test_n4_members_and_values():
+    """Struct members take the variable style and enum values the constant
+    style; all capitals isn't UpperCamelCase."""
+    msgs = check_annotated('plcopen-n4-members', 'PLCOPEN-N4')
+    assert msgs[9] == 'Identifier MIN_SCALE does not match required case lowerCamelCase'
+    assert msgs[20] == 'Identifier STARTMOTOR2 does not match required case UpperCamelCase'
+
+
+def test_n6_locals_and_loop_counters():
+    msgs = check_annotated('plcopen-n6-locals', 'PLCOPEN-N6')
+    assert msgs[8] == 'Identifier j is too short (1 char, minimum 3)'
+    assert msgs[36] == 'Identifier fast is too short (4 chars, minimum 8)'
+
+
+def test_n10_all_kinds():
+    msgs = check_annotated('plcopen-n10-kinds', 'PLCOPEN-N10')
+    assert msgs[4] == 'NAMED ELevel should start with prefix "EN_"'
+    assert msgs[7] == 'UDT Speed2 should start with prefix "T_"'
+    assert msgs[32] == 'PROGRAM Main should start with prefix "PRG"'
+
+
+def test_naming_config_errors(tmp_path):
+    """Unknown case styles and prefix keys are errors, not silently
+    ignored."""
+    f = tmp_path / 'p.st'
+    f.write_text('PROGRAM p\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n')
+    for naming, expected in [
+            ({'case': {'variable': 'camelCase'}},
+             'naming_conventions.case.variable: unknown style "camelCase"'),
+            ({'udt_prefixes': {'STRUCTURE': 'ST'}},
+             'naming_conventions.udt_prefixes: unknown key "STRUCTURE"'),
+            ({'scope_prefixes': {'global': 'g', 'module': 'm'}},
+             'naming_conventions.scope_prefixes: unknown key "MODULE"')]:
+        cfg = tmp_path / 'c.json'
+        cfg.write_text(json.dumps({'naming_conventions': naming}))
+        rc, out = run_checker_full_out([str(f)], binary_default, '-c', str(cfg))
+        assert rc != 0
+        assert expected in out
+# }}}
 
 
 # {{{ Names of programs, classes, interfaces and types
