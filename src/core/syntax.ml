@@ -788,6 +788,10 @@ module Task = struct
 
   let get_ti t = t.ti
 
+  let get_interval t = t.interval
+
+  let get_single t = t.single
+
 end
 
 module ProgramConfig = struct

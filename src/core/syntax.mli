@@ -499,6 +499,10 @@ module Task : sig
   val get_name : t -> string
 
   val get_ti : t -> TI.t
+
+  val get_interval : t -> data_source option
+
+  val get_single : t -> data_source option
 end
 
 module ProgramConfig : sig
