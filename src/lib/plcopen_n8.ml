@@ -94,7 +94,7 @@ let detector : Detector.t = {
   summary =
     "Identifiers should only contain ASCII letters, digits and single \
      underscores.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N8";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-N8";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

@@ -40,7 +40,7 @@ let detector : Detector.t = {
   id = "PLCOPEN-E3";
   name = "Some comparator instructions shall not be used for pointer or reference manipulation";
   summary = "Pointers and references should only be compared with = and <>.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-E3";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-E3";
   severity = Warn.Medium;
   plcopen_importance = Some Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

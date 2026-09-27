@@ -1,63 +1,140 @@
 # IEC Checker
 
-**⚡ [Try it online](https://iec-checker.github.io/playground)** | **📚 [Documentation](https://iec-checker.github.io/docs/intro)** | **🛡️ [Detectors reference](https://iec-checker.github.io/docs/detectors)** | **🔧 [Sponsor Custom Features](https://iec-checker.github.io/docs/sponsor-development)**
+A static analyzer for [IEC 61131-3](https://en.wikipedia.org/wiki/IEC_61131-3)
+PLC programs. It finds bugs and security problems, such as untrusted inputs
+driving outputs, races between tasks and unchecked errors, and checks the
+[PLCopen Coding Guidelines](https://plcopen.org/downloads).
 
-IEC Checker is an open source static analyzer for [IEC 61131-3](https://en.wikipedia.org/wiki/IEC_61131-3) programs. It catches bugs and enforces [PLCOpen coding guidelines](https://plcopen.org/software-construction-guidelines) before code reaches the PLC.
+This is Fortiphyd Logic's fork of [iec-checker](https://github.com/iec-checker/iec-checker)
+by Georgiy Komarov. It has diverged from it: see [what's different](#differences-from-upstream).
 
-## What it looks like
+```st
+PROGRAM Pump
+  VAR
+    level AT %IW0 : INT;
+    setpoint AT %MW100 : INT := 0;
+    speed AT %QW0 : INT;
+    axis : MC_MoveAbsolute;
+  END_VAR
+  speed := setpoint * 2;
+  axis(Execute := TRUE);
+  speed := LIMIT(0, level, 1000);
+END_PROGRAM
+```
 
 ```
-$ iec_checker program.st
-PLCOPEN-CP3: Variable X shall be initialized before being used
-  --> program.st:4:9
-  See: https://iec-checker.github.io/docs/detectors/PLCOPEN-CP3
+$ iec_checker pump.st
+TaintedVariable [high]: Output SPEED is driven by untrusted SETPOINT without a bounds check
+  --> pump.st:8:7
+  See: https://github.com/Fortiphyd/iec-checker/blob/master/docs/detectors.md#taintedvariable
 
-PLCOPEN-CP13: POUs shall not call themselves directly or indirectly
-  --> program.st:8:30
-  See: https://iec-checker.github.io/docs/detectors/PLCOPEN-CP13
+PLCOPEN-CP7 [medium]: Error information shall be tested: Error, ErrorID of axis (MC_MOVEABSOLUTE) are never read
+  --> pump.st:9:6
+  See: https://github.com/Fortiphyd/iec-checker/blob/master/docs/detectors.md#plcopen-cp7
+
+PLCOPEN-CP12 [high]: Physical output SPEED (%QW0) is written more than once per PLC cycle: it is already written on line 8
+  --> pump.st:10:7
+  See: https://github.com/Fortiphyd/iec-checker/blob/master/docs/detectors.md#plcopen-cp12
 ```
 
-## Features
+## What it checks
 
-- 28 [PLCOpen Software Construction Guidelines](https://iec-checker.github.io/docs/detectors/plcopen-overview) checks
-- Declaration analysis, unreachable code detection, unused variable detection
-- Structured Text, [PLCOpen XML](https://plcopen.org/technical-activities/xml-exchange), and [SEL XML](https://selinc.com/products/3530/) input formats
-- JSON output for [CI/CD integration](https://iec-checker.github.io/docs/ci-cd) and [Python tooling](https://iec-checker.github.io/docs/python)
-- [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) output (`-o sarif`) for code scanning tools
-- Severity levels (`low`, `medium`, `high`) for every check; hide the less important ones with `--min-severity`
+- **Untrusted data reaching outputs.** Values from physical inputs (`%I`) and
+  network-writable memory (`%M`) that drive physical outputs (`%Q`) without
+  a bounds check, followed through function blocks, functions and program
+  connections. See [Taint analysis](docs/taint-analysis.md).
+- **Tasks and cycles.** Outputs and globals written from several tasks,
+  outputs written or function block instances called more than once per
+  cycle, including by programs sharing a task.
+- **Memory and pointers.** Dynamic allocation, pointer arithmetic and
+  ordering comparisons of pointers.
+- **34 of the 64 PLCopen rules**, including dead code, uninitialized
+  variables, overlapping addresses, recursion, unchecked error outputs,
+  implicit conversions, floating point and time comparisons, loop variables,
+  complexity and naming conventions. Most of the rest apply to graphical
+  languages or to comments and layout.
+- **Duplicated code**, and copies that missed a rename, a likely copy-paste
+  error.
 
-The ST dialect is compatible with the [matiec](https://github.com/sm1820/matiec) compiler. If `iec-checker` chokes on extensions from your PLC vendor, please [open an issue](https://github.com/jubnzv/iec-checker/issues/new).
+See the [detectors reference](docs/detectors.md) for every check.
+
+Input can be Structured Text, [PLCopen XML](https://plcopen.org/technical-activities/xml-exchange)
+or SEL XML. The ST dialect follows IEC 61131-3 3rd edition, with some
+extensions of CODESYS and TwinCAT (`POINTER TO`, `__NEW`).
 
 ## Installation
 
-Download a prebuilt binary for Linux or Windows x86_64 from [GitHub releases](https://github.com/jubnzv/iec-checker/releases).
-
-### Docker
-
-Nightly builds are published to Docker Hub automatically by a weekly GitHub Actions workflow:
+Download a binary for Linux, macOS or Windows from the
+[releases](https://github.com/Fortiphyd/iec-checker/releases), or use the
+Docker image:
 
 ```bash
-docker pull jubnzv1/iec-checker:nightly
-docker run --rm -v "$PWD:/src" -w /src jubnzv1/iec-checker:nightly program.st
+docker run --rm -v "$PWD:/src" -w /src ghcr.io/fortiphyd/iec-checker:latest program.st
 ```
 
-### Build from source
+### Building from source
 
-Requires [OCaml](https://ocaml.org/docs/install.html) 5.1+ and [opam](https://opam.ocaml.org/doc/Install.html).
+With [opam](https://opam.ocaml.org/doc/Install.html) and OCaml 5.1 or later:
 
 ```bash
 opam install --deps-only .
 make
 ```
 
-See the [installation guide](https://iec-checker.github.io/docs/installation) for Windows instructions and optional Python setup.
+The binary is `bin/iec_checker`.
 
 ## Usage
 
 ```bash
-iec_checker test/st/*.st          # check ST files
-iec_checker -i xml schemes/*.xml  # check PLCOpen XML
-iec_checker --help                # all options
+iec_checker src/*.st                  # check ST files
+iec_checker -i xml project.xml        # check PLCopen XML
+iec_checker -m src/*.st               # analyse several files as one program
+iec_checker -o sarif src/*.st > iec.sarif
+iec_checker --min-severity medium src/*.st
+iec_checker --list-checks             # every check, its severity and PLCopen importance
 ```
 
-See the [CLI reference](https://iec-checker.github.io/docs/cli) for the full option list, output formats, and exit codes.
+Settings, such as checks to disable, thresholds and naming conventions, go in
+an `iec_checker.json` file: see [Configuration](docs/configuration.md) and
+[`iec_checker.example.json`](iec_checker.example.json). For JSON and SARIF
+output, filtering and exit codes, see [Output](docs/output.md).
+
+### GitHub code scanning
+
+```yaml
+- run: iec_checker -o sarif src/*.st > iec.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: iec.sarif
+```
+
+## Differences from upstream
+
+Among others:
+
+- the taint analysis, and the checks of tasks and cycles: MultiTaskWrite
+  (PLCopen CP10), CP12, CP20, and CP26 across programs;
+- the PLCopen rules CP7, E1, E2 and E3, CP24 as part of UnusedVariable, and
+  many fixes to the others after an audit against the guidelines;
+- duplicate and inconsistent-copy detection;
+- expression types, used by CP8, CP25, CP28 and mixed-type arithmetic;
+- severities, PLCopen importance and SARIF output;
+- parser support for references, pointers, program connections, task
+  settings and non-ASCII names.
+
+See [CHANGES.md](CHANGES.md).
+
+## Development
+
+```bash
+make            # build
+make test       # run the tests (pip install -r requirements-dev.txt first)
+make spell      # codespell, as in CI
+```
+
+[Releasing](docs/releasing.md) describes how releases are made.
+
+## License
+
+[LGPL-3.0-or-later](LICENSE), like the upstream project. The PLCopen Coding
+Guidelines are © PLCopen; rule names and texts quoted here are theirs.

@@ -80,7 +80,7 @@ let detector : Detector.t = {
   summary =
     "When multiple PROGRAMs write the same global variable, the resulting \
      value depends on scheduling order, creating a race condition.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP26";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-CP26";
   severity = IECCheckerCore.Warn.High;
   plcopen_importance = Some IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

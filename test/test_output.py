@@ -124,7 +124,21 @@ def test_sarif_rules_describe_results():
     for r in doc['runs'][0]['results']:
         assert r['ruleId'] in rules
     assert rules['PLCOPEN-CP12']['defaultConfiguration']['level'] == 'error'
-    assert rules['PLCOPEN-CP12']['helpUri'].endswith('PLCOPEN-CP12')
+    assert rules['PLCOPEN-CP12']['helpUri'].endswith('/docs/detectors.md#plcopen-cp12')
+
+
+def test_every_check_is_documented():
+    """The link of every check leads to its section of the detectors
+    reference, whose headings are the IDs of the checks."""
+    doc, _ = run_sarif([CP12])
+    rules = doc['runs'][0]['tool']['driver']['rules']
+    with open('../docs/detectors.md') as fp:
+        anchors = {line[4:].strip().lower() for line in fp if line.startswith('### ')}
+    for r in rules:
+        url = r['helpUri']
+        assert url.startswith(
+            'https://github.com/Fortiphyd/iec-checker/blob/master/docs/detectors.md#')
+        assert url.split('#')[1] in anchors, r['id']
 
 
 def test_sarif_min_severity():

@@ -42,7 +42,7 @@ let detector : Detector.t = {
   summary =
     "Functions, function blocks and classes should not depend on global state \
      via [VAR_EXTERNAL].";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP6";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-CP6";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

@@ -253,9 +253,6 @@ let pass_enabled id =
 
 (** [run_checker] Run program on the file with [path] and returns the
     error code. *)
-let doc_urls =
-  List.map Lib.registered_detectors ~f:(fun d ->
-    (d.Detector.id, d.Detector.doc_url))
 
 let stamp_file path ws =
   List.map ws ~f:(fun w ->
@@ -264,12 +261,17 @@ let stamp_file path ws =
 (** Warnings reported by the built-in passes, with their severities. *)
 let builtin_warnings = [
   ("OutOfBounds",      "Array index or declaration out of bounds", W.High);
-  ("UnusedVariable",   "Unused local variable",                    W.Low);
+  ("UnusedVariable",   "Unused variable",                          W.Low);
   ("TaintedVariable",  "Output driven by an untrusted input without a bounds check", W.High);
   ("DuplicateCode",    "Duplicated code",                          W.Medium);
   ("InconsistentCopy", "Name a copy of code failed to rename",     W.High);
   ("MultiTaskWrite",   "Output or global written by programs in different tasks", W.High);
 ]
+
+let doc_urls =
+  List.map Lib.registered_detectors ~f:(fun d ->
+    (d.Detector.id, d.Detector.doc_url))
+  @ List.map builtin_warnings ~f:(fun (id, _, _) -> (id, Project.check_doc_url id))
 
 (** Errors are always reported, whatever the minimum severity. *)
 let is_error (w : W.t) =
@@ -371,7 +373,8 @@ let sarif_rules () =
            rule_plcopen_rule = Option.map d.plcopen_importance ~f:(fun _ -> d.id) })
   @ List.map builtin_warnings ~f:(fun (id, name, sev) ->
       let plcopen = plcopen_of_builtin id in
-      WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev;
+      WO.{ rule_id = id; rule_name = name; help_url = Project.check_doc_url id;
+           rule_severity = sev;
            rule_plcopen_importance = Option.map plcopen ~f:snd;
            rule_plcopen_rule = Option.map plcopen ~f:fst })
 
@@ -455,7 +458,7 @@ let create_file path =
 (** Built-in analysis passes (not in the detector registry). *)
 let builtin_passes = [
   ("DeclarationAnalysis", "Check variable declarations", W.High);
-  ("UnusedVariable",      "Detect unused local variables", W.Low);
+  ("UnusedVariable",      "Detect unused variables", W.Low);
   ("UseDefine",           "Use-define chain analysis (array bounds)", W.High);
   ("TaintedVariable",     "Track data flow from located (AT %...) variables", W.High);
   ("DuplicateCode",       "Detect duplicated code", W.Medium);
@@ -485,8 +488,8 @@ let print_list_checks () =
   Printf.printf "%-*s  %-8s  %-8s  %s\n" id_width "CHECK" "SEVERITY" "PLCOPEN" "DESCRIPTION";
   List.iter all_ids ~f:(fun (id, sev, imp, name) ->
     Printf.printf "%-*s  %-8s  %-8s  %s\n" id_width id sev imp name);
-  Printf.printf "\n%d check(s). See <https://iec-checker.github.io/docs/detectors/> for details.\n"
-    (List.length all_ids)
+  Printf.printf "\n%d check(s). See <%sdetectors.md> for details.\n"
+    (List.length all_ids) Project.docs_url
 
 (** Parse the input format string into [input_format_ty]. *)
 let parse_input_format s =

@@ -45,7 +45,7 @@ let detector : Detector.t = {
   name = "Access to a member shall be by name";
   summary =
     "Direct addressing should not be used when a symbolic name exists.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP1";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-CP1";
   severity = IECCheckerCore.Warn.Medium;
   plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

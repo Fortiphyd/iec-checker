@@ -111,7 +111,7 @@ let sarif_report rules warnings : Yojson.Safe.t =
     "runs", `List [`Assoc [
         "tool", `Assoc ["driver", `Assoc [
             "name", `String "iec-checker";
-            "informationUri", `String "https://github.com/iec-checker/iec-checker";
+            "informationUri", `String Project.repository_url;
             "rules", `List (List.map rules ~f:sarif_rule);
           ]];
         "results", `List (List.map warnings ~f:sarif_result);
