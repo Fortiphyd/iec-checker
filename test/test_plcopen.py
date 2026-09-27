@@ -772,3 +772,44 @@ def test_e_rules():
     assert msgs[('PLCOPEN-E1', 25)] == ('Dynamic memory allocation shall not be used: '
                                         '__NEW allocates memory at run time')
     assert msgs[('PLCOPEN-E3', 45)].endswith('not >=')
+
+
+def test_cp7():
+    """Error outputs of instances and functions that are never read; reading
+    one of them, directly or through a connected variable, is enough."""
+    f = 'st/plcopen-cp7.st'
+    warns, rc = run_checker([f])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    ws = filter_warns(warns, 'PLCOPEN-CP7')
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* PLCOPEN-CP7 *)' in line]
+    assert sorted(w.linenr for w in ws) == expected
+    msgs = {w.linenr: w.msg for w in ws}
+    # The rule's example
+    assert msgs[43] == ('Error information shall be tested: xError, iError of '
+                        'instance (Scaler) are never read')
+    assert msgs[64].endswith('Error, ErrorID of move (MC_MOVEABSOLUTE) are never read')
+
+
+def test_cp7_error_names(tmp_path):
+    names = {'Error': True, 'ErrorID': True, 'xError': True, 'iErrorCode': True,
+             'ERR': True, 'nErrId': True, 'Error_ID': True,
+             'Status': False, 'Errand': False, 'terror': False, 'Done': False}
+    decls = '\n'.join(f'    {n} : INT;' for n in names)
+    f = tmp_path / 'p.st'
+    f.write_text(f'FUNCTION_BLOCK Fb\n  VAR_OUTPUT\n{decls}\n  END_VAR\n  Done := 1;\nEND_FUNCTION_BLOCK\n'
+                 + ''.join(f'FUNCTION_BLOCK Only{i}\n  VAR_OUTPUT {n} : INT; END_VAR\n  {n} := 1;\n'
+                           f'END_FUNCTION_BLOCK\n' for i, n in enumerate(names))
+                 + 'PROGRAM p\n  VAR\n'
+                 + ''.join(f'    i{i} : Only{i};\n' for i, _ in enumerate(names))
+                 + '  END_VAR\n'
+                 + ''.join(f'  i{i}();\n' for i, _ in enumerate(names))
+                 + 'END_PROGRAM\n')
+    warns, rc = run_checker([str(f)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    flagged = {w.msg.split(': ')[1].split(' of ')[0] for w in filter_warns(warns, 'PLCOPEN-CP7')}
+    assert flagged == {n for n, is_error in names.items() if is_error}
