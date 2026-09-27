@@ -15,7 +15,11 @@ module Warn = IECCheckerCore.Warn
 
    Calls to function blocks and functions declared in the analyzed code use a
    summary of the callee: the taint of its outputs, and the sinks in its body,
-   in terms of its inputs. *)
+   in terms of its inputs.
+
+   Programs are summarized the same way, for the connections of their
+   instances in configurations: an input connected to an untrusted source is
+   untrusted, and an output connected to a physical output is a sink. *)
 
 (** Taint of a value: the untrusted variables it derives from, and whether a
     trusted lower/upper bound has been applied since. A value is clean when it
@@ -51,6 +55,8 @@ type finding = {
   sink : string;
   tainted_by : String.Set.t;
   calls : Int.Set.t; (** Lines of the calls that lead to this sink *)
+  configs : Int.Set.t;
+  (** Lines of the program configurations whose connections lead to it *)
 }
 
 type summary = {
@@ -92,6 +98,7 @@ let std_summary = function
 
 type env = {
   globals : S.VarDecl.t String.Map.t; (** Located global variables *)
+  programs : S.program_decl String.Map.t;
   fbs : S.fb_decl String.Map.t;
   funcs : S.function_decl String.Map.t;
   summaries : summary option String.Table.t;
@@ -189,12 +196,15 @@ let resolve ctx v =
 (* Set once the summary machinery is defined below. *)
 let summary_of : (env -> string -> summary option) ref = ref (fun _ _ -> None)
 
-let record ctx (fd : finding) =
+let record_to findings (fd : finding) =
   let key = Printf.sprintf "%d:%d" fd.at.linenr fd.at.col in
-  Hashtbl.update ctx.findings key ~f:(function
+  Hashtbl.update findings key ~f:(function
       | Some old -> { old with tainted_by = Set.union old.tainted_by fd.tainted_by;
-                               calls = Set.union old.calls fd.calls }
+                               calls = Set.union old.calls fd.calls;
+                               configs = Set.union old.configs fd.configs }
       | None -> fd)
+
+let record ctx fd = record_to ctx.findings fd
 
 (** Report the sinks in a callee reached by the arguments of a call. *)
 let record_inner ctx (sm : summary) args (call_ti : TI.t) =
@@ -368,7 +378,7 @@ let assign ctx m lhs t =
   let t = with_type_bound r t in
   if r.output && not (is_clean t) then
     record ctx { at = S.VarUse.get_ti lhs; sink = r.name; tainted_by = t.srcs;
-                 calls = Int.Set.empty };
+                 calls = Int.Set.empty; configs = Int.Set.empty };
   (* The network can still write untrusted memory, so writes don't clean it. *)
   if r.untrusted then m
   else if r.partial then Map.set m ~key:r.name ~data:(join (lookup ctx m r.name) t)
@@ -516,9 +526,11 @@ let pou_of_func (f : S.function_decl) =
   { decls = f.variables; stmts = f.statements; persistent = false;
     result = Some (S.Function.get_name f.id) }
 
+let pou_of_program (p : S.program_decl) =
+  { decls = p.variables; stmts = p.statements; persistent = true; result = None }
+
 let pou_of_elem = function
-  | S.IECProgram (_, p) ->
-    Some { decls = p.variables; stmts = p.statements; persistent = true; result = None }
+  | S.IECProgram (_, p) -> Some (pou_of_program p)
   | S.IECFunctionBlock (_, fb) -> Some (pou_of_fb fb)
   | S.IECFunction (_, f) -> Some (pou_of_func f)
   | _ -> None
@@ -665,15 +677,101 @@ let () =
         let s = compute_summary env pou in
         Hashtbl.set env.summaries ~key:name ~data:(Some s);
         Some s
+
+(** Summary of the program type [name], computed once. *)
+let program_summary env name =
+  let key = "PROGRAM " ^ name in
+  match Hashtbl.find env.summaries key with
+  | Some s -> s
+  | None ->
+    let s = Option.map (Map.find env.programs name) ~f:(fun p ->
+        compute_summary env (pou_of_program p)) in
+    Hashtbl.set env.summaries ~key ~data:s;
+    s
+(* }}} *)
+
+(* {{{ Program connections *)
+(** Taint of the value a program input is connected to. *)
+let source_taint env = function
+  | None -> clean (* a constant *)
+  | Some v -> begin
+      match S.VarUse.get_loc v with
+      | S.VarUse.DirVar dv ->
+        if is_untrusted_dir dv then raw (S.DirVar.get_name dv) else clean
+      | S.VarUse.SymVar _ ->
+        let n = S.VarUse.get_name v in
+        match Option.bind (Map.find env.globals n) ~f:S.VarDecl.get_located_at with
+        | Some dv when is_untrusted_dir dv -> raw n
+        | _ -> clean
+    end
+
+(** Whether a program output connected to [v] drives a physical output. *)
+let is_sink env v =
+  match S.VarUse.get_loc v with
+  | S.VarUse.DirVar dv -> is_output_dir dv
+  | S.VarUse.SymVar _ ->
+    Option.exists (Option.bind (Map.find env.globals (S.VarUse.get_name v))
+                     ~f:S.VarDecl.get_located_at) ~f:is_output_dir
+
+let sink_name v =
+  match S.VarUse.get_loc v with
+  | S.VarUse.DirVar dv -> S.DirVar.get_name dv
+  | S.VarUse.SymVar _ -> S.VarUse.get_name v
+
+(** Sinks reached through the connections of the program instances of [c]. *)
+let check_connections env findings (c : S.configuration_decl) =
+  List.iter c.resources ~f:(fun (r : S.resource_decl) ->
+      List.iter r.programs ~f:(fun pc ->
+          let line = (S.ProgramConfig.get_ti pc).linenr in
+          let conns = S.ProgramConfig.get_connections pc in
+          Option.iter (Option.bind (S.ProgramConfig.get_type_name pc) ~f:(program_summary env))
+            ~f:(fun sm ->
+                let inputs =
+                  List.filter_map conns ~f:(fun (cn : S.ProgramConfig.connection) ->
+                      match cn.dir with
+                      | S.ProgramConfig.ConnIn ->
+                        Some (S.VarUse.get_name cn.param, source_taint env cn.other)
+                      | S.ProgramConfig.ConnOut -> None)
+                in
+                let args p = Option.value (List.Assoc.find inputs ~equal:String.equal p) ~default:clean in
+                (* Sinks in the program reached from its inputs *)
+                List.iter sm.inner ~f:(fun fd ->
+                    let tainted_by = subst_srcs args (Set.filter fd.tainted_by ~f:is_param_src) in
+                    if not (Set.is_empty tainted_by) then
+                      record_to findings { fd with tainted_by; configs = Int.Set.singleton line });
+                (* Outputs connected to physical outputs *)
+                List.iter conns ~f:(fun (cn : S.ProgramConfig.connection) ->
+                    match cn.dir, cn.other with
+                    | S.ProgramConfig.ConnOut, Some v when is_sink env v ->
+                      let t =
+                        subst args (Option.value (Map.find sm.results (S.VarUse.get_name cn.param))
+                                      ~default:clean)
+                      in
+                      if not (is_clean t) then
+                        record_to findings
+                          { at = S.VarUse.get_ti v; sink = sink_name v; tainted_by = t.srcs;
+                            calls = Int.Set.empty; configs = Int.Set.singleton line }
+                    | _ -> ()))))
 (* }}} *)
 
 let to_warning fd =
-  let via =
+  let lines ls = String.concat ~sep:", " (List.map ls ~f:Int.to_string) in
+  let calls =
     match Set.to_list fd.calls with
+    | [] -> []
+    | [l] -> [Printf.sprintf "the call on line %d" l]
+    | ls -> [Printf.sprintf "calls on lines %s" (lines ls)]
+  in
+  let configs =
+    match Set.to_list fd.configs with
+    | [] -> []
+    | [l] -> [Printf.sprintf "the program configuration on line %d" l]
+    | ls -> [Printf.sprintf "the program configurations on lines %s" (lines ls)]
+  in
+  let via =
+    match calls @ configs with
     | [] -> ""
-    | [l] -> Printf.sprintf " (through the call on line %d)" l
-    | ls -> Printf.sprintf " (through calls on lines %s)"
-              (String.concat ~sep:", " (List.map ls ~f:Int.to_string))
+    | vs -> Printf.sprintf " (through %s)" (String.concat ~sep:" and " vs)
   in
   let text =
     Printf.sprintf "Output %s is driven by untrusted %s without a bounds check%s"
@@ -684,6 +782,10 @@ let to_warning fd =
 let run elements =
   let env = {
     globals = collect_globals elements;
+    programs = String.Map.of_alist_reduce ~f:(fun a _ -> a)
+        (List.filter_map elements ~f:(function
+             | S.IECProgram (_, p) -> Some (p.name, p)
+             | _ -> None));
     fbs = String.Map.of_alist_reduce ~f:(fun a _ -> a)
         (List.filter_map elements ~f:(function
              | S.IECFunctionBlock (_, fb) -> Some (S.FunctionBlock.get_name fb.id, fb)
@@ -701,6 +803,9 @@ let run elements =
       Option.iter (pou_of_elem e) ~f:(fun pou ->
           let ctx = mk_ctx env pou.decls findings in
           ignore (analyze ctx pou (Some String.Map.empty) : state)));
+  List.iter elements ~f:(function
+      | S.IECConfiguration (_, c) -> check_connections env findings c
+      | _ -> ());
   Hashtbl.data findings
   |> List.sort ~compare:(fun a b ->
       match Int.compare a.at.linenr b.at.linenr with

@@ -825,3 +825,85 @@ def test_disabled_by_config(tmp_path):
     cfg.write_text(json.dumps(
         {'detectors': {'disabled': ['TaintedVariable']}}))
     check_body(tmp_path, 'drive := sp;', args=['-c', str(cfg)])
+
+
+# {{{ Connections of program inputs and outputs in configurations
+CONN_CONFIG = """CONFIGURATION cfg
+  VAR_GLOBAL
+    g_level AT %IW4 : INT;
+    g_sp AT %MW200 : INT;
+    g_drive AT %QW4 : INT;
+    g_plain : INT;
+  END_VAR
+  RESOURCE res ON PLC
+    TASK t(INTERVAL := T#10MS, PRIORITY := 1);
+{programs}
+  END_RESOURCE
+END_CONFIGURATION
+
+PROGRAM pass
+  VAR_INPUT u : INT; END_VAR
+  VAR_OUTPUT y : INT; END_VAR
+  y := u;
+END_PROGRAM
+
+PROGRAM clamp
+  VAR_INPUT u : INT; END_VAR
+  VAR_OUTPUT y : INT; END_VAR
+  y := LIMIT(0, u, 100);
+END_PROGRAM
+
+PROGRAM drives
+  VAR_INPUT u : INT; END_VAR
+  VAR out AT %QW7 : INT; END_VAR
+  out := u; {inner}
+END_PROGRAM
+
+PROGRAM reads
+  VAR_OUTPUT y : INT; END_VAR
+  VAR raw AT %IW9 : INT; END_VAR
+  y := raw;
+END_PROGRAM
+"""
+
+
+def check_conn(tmp_path, programs, inner=''):
+    source = CONN_CONFIG.format(programs=programs, inner=inner)
+    check(tmp_path, source)
+    return run_taint(tmp_path, source)
+
+
+def test_connected_input_to_connected_output(tmp_path):
+    [w] = check_conn(tmp_path, f'    PROGRAM p WITH t : pass(u := %IW0, y => %QW0); {MARKER}')
+    assert w.msg == ('Output %QW0 is driven by untrusted %IW0 without a bounds check '
+                     '(through the program configuration on line 10)')
+
+
+def test_connected_located_globals(tmp_path):
+    check_conn(tmp_path, f"""    PROGRAM p1 WITH t : pass(u := g_sp, y => g_drive); {MARKER}
+    PROGRAM p2 WITH t : pass(u := g_level, y => %QW1); {MARKER}""")
+
+
+def test_connected_input_bounded_in_program(tmp_path):
+    check_conn(tmp_path, '    PROGRAM p WITH t : clamp(u := %IW0, y => %QW0);')
+
+
+def test_connected_trusted_sources(tmp_path):
+    check_conn(tmp_path, """    PROGRAM p1 WITH t : pass(u := 5, y => %QW0);
+    PROGRAM p2 WITH t : pass(u := g_plain, y => %QW1);
+    PROGRAM p3 WITH t : pass(u := %IX0.0, y => %QW2);""")
+
+
+def test_connected_output_not_physical(tmp_path):
+    check_conn(tmp_path, '    PROGRAM p WITH t : pass(u := %IW0, y => g_plain);')
+
+
+def test_connected_input_reaches_sink_in_program(tmp_path):
+    [w] = check_conn(tmp_path, '    PROGRAM p WITH t : drives(u := %MW3);', inner=MARKER)
+    assert w.msg.endswith('untrusted %MW3 without a bounds check '
+                          '(through the program configuration on line 10)')
+
+
+def test_program_source_to_connected_output(tmp_path):
+    check_conn(tmp_path, f'    PROGRAM p WITH t : reads(y => %QW0); {MARKER}')
+# }}}
