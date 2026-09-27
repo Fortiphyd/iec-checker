@@ -155,22 +155,32 @@ let rec get_stmt_exprs stmt =
   | S.StmExit _ | S.StmContinue _ | S.StmReturn _ -> []
   | S.StmEmpty _ -> []
 
-let get_pou_exprs elem =
+let get_stmts_exprs stmts =
   (* Statements are visited once from the top level: [get_stmt_exprs] already
-     descends into nested bodies. Arguments of function calls are added as
-     separate expressions. *)
-  let rec with_call_args e =
-    e :: List.concat_map (expr_to_stmts e)
-      ~f:(fun s -> List.concat_map (get_stmt_exprs s) ~f:with_call_args)
+     descends into nested bodies. Arguments of function calls and array
+     subscripts are added as separate expressions. *)
+  let rec subscripts = function
+    | S.ExprVariable (_, v) -> S.index_exprs v
+    | S.ExprBin (_, a, _, b) -> subscripts a @ subscripts b
+    | S.ExprUn (_, _, a) -> subscripts a
+    | S.ExprConstant _ | S.ExprFuncCall _ -> []
   in
-  get_top_stmts elem
-  |> List.concat_map ~f:get_stmt_exprs
-  |> List.concat_map ~f:with_call_args
+  let rec with_nested e =
+    e :: List.concat_map (expr_to_stmts e)
+      ~f:(fun s -> List.concat_map (get_stmt_exprs s) ~f:with_nested)
+    @ List.concat_map (subscripts e) ~f:with_nested
+  in
+  List.concat_map stmts ~f:get_stmt_exprs
+  |> List.concat_map ~f:with_nested
+
+let get_pou_exprs elem = get_stmts_exprs (get_top_stmts elem)
 
 let get_var_uses elem =
   let rec get_vars = function
     | S.ExprVariable (_, vu) -> [vu]
     | S.ExprConstant _ -> []
+    (* The parser puts the target of an output parameter on both sides. *)
+    | S.ExprBin (_, _, S.SENDTO, rhs) -> get_vars rhs
     | S.ExprBin (_, lhs, _, rhs) -> (get_vars lhs) @ (get_vars rhs)
     | S.ExprUn (_, _, e) -> get_vars e
     (* Call arguments are returned separately by [get_pou_exprs]. *)
@@ -197,7 +207,9 @@ let filter_exprs ~f elem =
           acc @ [e] @ (get_nested_exprs acc e)
         end
       | S.ExprFuncCall (_, s) -> acc @ aux [] s
-      | S.ExprVariable _ | S.ExprConstant _ -> acc
+      | S.ExprVariable (_, v) ->
+        acc @ List.concat_map (S.index_exprs v) ~f:(fun e -> e :: get_nested_exprs [] e)
+      | S.ExprConstant _ -> acc
     in
     let apply_filter (exprs : S.expr list) =
       List.filter exprs ~f

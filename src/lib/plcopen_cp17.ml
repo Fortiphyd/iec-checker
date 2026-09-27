@@ -4,30 +4,20 @@ module S = IECCheckerCore.Syntax
 module W = IECCheckerCore.Warn
 
 (* Collect (read_vars, written_vars) from a statement.
-   A variable is considered "written" if it appears as LHS of an ASSIGN expr, "read" otherwise. 
-   However, it has problems:
-     A variable can be read in LHS, like subscripting: arr[i] := 0, here i is read, arr is written
-     In IEC 61131-3, the formal definitions related to "Subscript Variable Access" are:
-
-     Symbolic_Variable  : ( ( 'THIS' '.' ) | Namespace_Hierarchy '.' )? ( Var_Access | Multi_Elem_Var );
-     Var_Access         : Variable_Name | Ref_Deref; 
-     Multi_Elem_Var     : Var_Access (Subscript_List | Struct_Variable)+;
-     Subscript_List     : '[' Subscript ( ',' Subscript )* ']';
-     Subscript          : Expression;
-     ...
-     
-     So all variables in a `Subscript` are all read theoretically.
-     But because currently the parser has discarded the `Subscript` inside the `[]` when it is not a constant, 
-     we cannot distinguish the read/write of the variable in the `Subscript`.
-*)
+   A variable is considered "written" if it appears as LHS of an ASSIGN expr, "read" otherwise.
+   Variables in array subscripts are read even on the LHS: in [arr[i] := 0], [i] is read and
+   [arr] is written (IEC 61131-3: [Subscript : Expression]). *)
 
 let rec collect_expr ~in_lhs (reads, writes) e =
   (* in_lhs: Whether the expression is in the left-hand side of an assignment *)
   match e with
   | S.ExprVariable (_, vu) ->
-    let name = S.VarUse.get_name vu in
-    if in_lhs then (reads, name :: writes)
-    else (name :: reads, writes)
+    (* Accessing a member reads or writes the parameter. *)
+    let full = S.VarUse.get_name vu in
+    let name = Option.value_map (String.lsplit2 full ~on:'.') ~default:full ~f:fst in
+    let acc = if in_lhs then (reads, name :: writes) else (name :: reads, writes) in
+    (* Variables in array subscripts are read, even on the left-hand side. *)
+    List.fold (S.index_exprs vu) ~init:acc ~f:(collect_expr ~in_lhs:false)
   | S.ExprConstant _ -> (reads, writes)
   | S.ExprBin (_, lhs, op, rhs) -> begin
       match op with
@@ -177,5 +167,6 @@ let detector : Detector.t = {
   summary = "Input parameters must be read, output parameters must be written, and in/out parameters must be used.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP17";
   severity = IECCheckerCore.Warn.Medium;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

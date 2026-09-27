@@ -1,0 +1,8 @@
+{
+  "detectors": { "enabled": ["PLCOPEN-N2"] },
+  "naming_conventions": {
+    "type_prefixes": { "int": "i", "BOOL": "x", "TOD": "tod", "ARRAY": "a",
+                       "STRUCT": "st", "FB": "fb", "ENUM": "e", "Temperature": "temp" },
+    "scope_prefixes": { "GLOBAL": "g", "PARAMETER": "p" }
+  }
+}

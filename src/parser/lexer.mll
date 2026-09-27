@@ -192,8 +192,13 @@ let fix_point_ns = (integer | (integer '.' integer)) ("ns" | "NS")
 
 (* Dots join the parts of struct member accesses; one not followed by a name
    character is a separate token, as in bit access [x.%X3] or range [lo..hi]. *)
-let label_char = ['A'-'Z' 'a'-'z' '0'-'9' '_']
-let label = '_'? letter (label_char | '.' label_char)*
+(* Bytes of UTF-8 encoded characters outside ASCII, such as accented or
+   national letters. The standard only allows ASCII letters in identifiers,
+   but some tools accept others; they are lexed so that PLCopen N8 can
+   report them instead of the whole file failing to parse. *)
+let non_ascii = ['\128'-'\255']
+let label_char = ['A'-'Z' 'a'-'z' '0'-'9' '_'] | non_ascii
+let label = '_'? (letter | non_ascii) (label_char | '.' label_char)*
 
 rule initial tokinfo =
   parse
@@ -230,10 +235,11 @@ rule initial tokinfo =
   (* }}} *)
 
   (* {{{ Helpers for datetime types *)
-  | "T#"  { T_TSHARP }
-  | "LT#" { T_LTSHARP }
-  | "D#"  { T_DSHARP }
-  | "LD#" { T_LDSHARP }
+  (* Case doesn't matter, as in the rest of the language. *)
+  | ['T' 't'] '#'               { T_TSHARP }
+  | ['L' 'l'] ['T' 't'] '#'     { T_LTSHARP }
+  | ['D' 'd'] '#'               { T_DSHARP }
+  | ['L' 'l'] ['D' 'd'] '#'     { T_LDSHARP }
   (* }}} *)
 
   (* {{{ ST operators *)
@@ -280,6 +286,13 @@ rule initial tokinfo =
   }
   (* }}} *)
 
+  (* Operators of CODESYS and TwinCAT such as __NEW, __DELETE and
+     __ISVALIDREF. The standard doesn't allow names with two leading
+     underscores, so they don't clash with others. *)
+  | ("__" letter label_char*) as v
+  {
+    T_IDENTIFIER(String.uppercase(v), Tok_info.create_with_raw lexbuf v)
+  }
   (* {{{ Case-insensitive lexing of identifiers and reserved keywords. *)
   | label as v
   {

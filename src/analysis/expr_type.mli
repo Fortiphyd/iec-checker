@@ -3,7 +3,10 @@
     Types are found from declarations only: variables, array elements, struct
     members and function block outputs, typed literals, conversion functions,
     standard functions and the results of functions. Nothing is propagated
-    between statements. *)
+    between statements.
+
+    Duration and time of day literals are typed TIME, date literals DATE and
+    date and time literals DT. *)
 open IECCheckerCore
 module S = Syntax
 
@@ -25,6 +28,9 @@ val env_of : S.iec_library_element list -> S.iec_library_element -> env
 val type_of : env -> S.expr -> t
 
 val var_type : env -> S.VarUse.t -> t
+
+val type_of_spec : env -> S.derived_ty_decl_spec -> t
+(** Type of values declared with the given specification. *)
 
 (** {2 Numeric types} *)
 

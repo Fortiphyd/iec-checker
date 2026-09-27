@@ -79,7 +79,9 @@
             | None -> Syntax.SymVar.add_array_index_opaque acc_sv
           end
           | _ -> Syntax.SymVar.add_array_index_opaque acc_sv
-      end)
+      end
+      (* Keep the expression too, for the variables used in it. *)
+      |> fun sv -> Syntax.SymVar.add_array_index_expr sv (Syntax.Index_expr e))
 
   let mk_var_use_sym sv =
     let var_use = Syntax.VarUse.create_sym sv Syntax.VarUse.Elementary in
@@ -824,7 +826,7 @@ let type_decl :=
 (*   { let name, _ = name_id in (name, ty) }                   *)
 let type_decl_helper_opt :=
   | name_id = T_IDENTIFIER; T_COLON; ty = option(type_spec_helper);
-  { let name, _ = name_id in (name, ty) }
+  { (name_id, ty) }
 (* Same as elem_type_name, but with length of strings. *)
 let type_spec_helper :=
   | ~ = numeric_type_name; <>
@@ -840,19 +842,19 @@ let simple_type_decl :=
   (* | ty_decl_name = simple_type_name; T_COLON; init_vals = simple_spec_init; *)
   | name_type = type_decl_helper_opt; ci = optional_assign(constant_expr);
   {
-    let (ty_name, ty_decl_opt) = name_type in
+    let ((ty_name, ti), ty_decl_opt) = name_type in
     let ty_decl = match ty_decl_opt with
     | Some(v) -> v
     | None -> raise (SyntaxError "Missing type name declaration")
     in
     let ty_spec = Syntax.DTySpecElementary(ty_decl) in
-    ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci)
+    ti, (ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci))
   }
   | ty_name_id = T_IDENTIFIER; T_COLON; ty_decl = simple_type_access; ci = optional_assign(constant_expr);
   {
-    let ty_name, _ = ty_name_id in
+    let ty_name, ti = ty_name_id in
     let ty_spec = Syntax.DTySpecSimple(ty_decl) in
-    ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci)
+    ti, (ty_name, Syntax.DTyDeclSingleElement(ty_spec, ci))
   }
 
 let simple_spec_init :=
@@ -874,8 +876,8 @@ let subrange_spec_init :=
   | s = subrange_spec; T_ASSIGN; ic = signed_int;
   {
     match s with
-    | ty_name, Syntax.DTyDeclSubrange(ty_spec, _) ->
-      ty_name, Syntax.DTyDeclSubrange(ty_spec, (c_get_int_exn ic))
+    | ti, (ty_name, Syntax.DTyDeclSubrange(ty_spec, _)) ->
+      ti, (ty_name, Syntax.DTyDeclSubrange(ty_spec, (c_get_int_exn ic)))
     | _ -> assert false
   }
   | ~ = subrange_spec; <>
@@ -883,7 +885,7 @@ let subrange_spec_init :=
 let subrange_spec :=
   | name_type = type_decl_helper_opt; T_LPAREN; s = subrange; T_RPAREN;
   {
-    let (ty_name, ty_decl_opt) = name_type in
+    let ((ty_name, ti), ty_decl_opt) = name_type in
     let ty_decl = match ty_decl_opt with
     | Some(v) -> v
     | None -> raise (SyntaxError "Missing subrange type declaration")
@@ -893,7 +895,7 @@ let subrange_spec :=
     else
       let (_, lb, ub) = s in
       (* According the Standard, the initial value is assigned to lower bound by default. *)
-      ty_name, Syntax.DTyDeclSubrange((ty_decl, lb, ub), lb)
+      ti, (ty_name, Syntax.DTyDeclSubrange((ty_decl, lb, ub), lb))
   }
   (* | tn = subrange_type_access;
   { } *)
@@ -914,14 +916,15 @@ let subrange :=
 let enum_type_decl :=
   | type_opts = type_decl_helper_opt; specs = named_spec_init;
   {
-    let (enum_name, elem_type_name) = type_opts
+    let ((enum_name, ti), elem_type_name) = type_opts
     and (element_specs, default_value) = specs in
-    enum_name, Syntax.DTyDeclEnumType(elem_type_name, element_specs, default_value)
+    ti, (enum_name, Syntax.DTyDeclEnumType(elem_type_name, element_specs, default_value))
   }
-  | enum_name = enum_type_name; T_COLON; specs = enum_spec_init;
+  | enum_id = T_IDENTIFIER; T_COLON; specs = enum_spec_init;
   {
-    let (element_specs, default_value) = specs in
-    enum_name, Syntax.DTyDeclEnumType(None, element_specs, default_value)
+    let (enum_name, ti) = enum_id
+    and (element_specs, default_value) = specs in
+    ti, (enum_name, Syntax.DTyDeclEnumType(None, element_specs, default_value))
   }
 
 let named_spec_init :=
@@ -934,7 +937,7 @@ let enum_spec_init :=
     let specs = List.fold_left
       values
       ~init:[]
-      ~f:(fun acc (elem_name, _) -> acc @ [Syntax.{ enum_type_name = None; elem_name; initial_value = None }])
+      ~f:(fun acc (elem_name, elem_ti) -> acc @ [Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = None }])
     in
     (specs, default_value_opt)
   }
@@ -946,26 +949,26 @@ let enum_spec_init :=
 let enum_value_spec :=
   | id = T_IDENTIFIER;
   {
-    let elem_name, _ = id in
-    Syntax.{ enum_type_name = None; elem_name; initial_value = None; }
+    let elem_name, elem_ti = id in
+    Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = None; }
   }
   | id = T_IDENTIFIER; T_ASSIGN; initial_value = int_literal;
   {
-    let elem_name, _ = id in
-    Syntax.{ enum_type_name = None; elem_name; initial_value = Some(initial_value); }
+    let elem_name, elem_ti = id in
+    Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = Some(initial_value); }
   }
   | id = T_IDENTIFIER; T_ASSIGN; initial_value = constant_expr;
   {
-    let elem_name, _ = id in
+    let elem_name, elem_ti = id in
     let initial_const = match initial_value with Syntax.ExprConstant (_, c) -> c | _ -> assert false in
-    Syntax.{ enum_type_name = None; elem_name; initial_value = Some(initial_const); }
+    Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = Some(initial_const); }
   }
 
 let enum_value :=
   | ty_opt = option(enum_value_opt); id = T_IDENTIFIER;
   {
-    let elem_name, _ = id in
-    Syntax.{ enum_type_name = ty_opt; elem_name; initial_value = None; }
+    let elem_name, elem_ti = id in
+    Syntax.{ enum_type_name = ty_opt; elem_name; elem_ti; initial_value = None; }
   }
 
 (* Helper rule for enum_value and enum_value_use  *)
@@ -975,9 +978,9 @@ let enum_value_opt :=
 let array_type_decl :=
   | name_type = type_decl_helper_opt; specs = array_spec_init;
   {
-    let (name, _) = name_type
+    let ((name, ti), _) = name_type
     and (subranges, ty, initializer_list) = specs in
-    name, Syntax.DTyDeclArrayType(subranges, ty, initializer_list)
+    ti, (name, Syntax.DTyDeclArrayType(subranges, ty, initializer_list))
   }
 
 let array_spec_init :=
@@ -1050,9 +1053,9 @@ let array_elem_init_value :=
 let struct_type_decl :=
   | name_type = type_decl_helper_opt; spec = struct_spec;
   {
-    let (name, _) = name_type
+    let ((name, ti), _) = name_type
     and (is_overlap, elem_specs) = spec in
-    name, Syntax.DTyDeclStructType(is_overlap, elem_specs)
+    ti, (name, Syntax.DTyDeclStructType(is_overlap, elem_specs))
   }
 
 let struct_spec :=
@@ -1069,14 +1072,16 @@ let struct_decl :=
   { match overlap with Some(v) -> (true, elems) | None -> (false, elems) }
 
 let struct_elem_decl :=
-  | name = struct_elem_name; loc = option(struct_elem_loc); T_COLON; ty = struct_elem_ty; inval = optional_assign(struct_elem_init); T_SEMICOLON;
+  | id = struct_elem_name; loc = option(struct_elem_loc); T_COLON; ty = struct_elem_ty; inval = optional_assign(struct_elem_init); T_SEMICOLON;
   {
+    let (name, struct_elem_ti) = id in
     let struct_elem_init_value  = match inval with
       | Some (_, v) -> Some(v)
       | None -> None
     in
     Syntax.
     { struct_elem_name = name;
+      struct_elem_ti;
       struct_elem_loc = loc;
       struct_elem_ty = ty;
       struct_elem_init_value; }
@@ -1091,8 +1096,7 @@ let struct_elem_loc :=
   | T_AT; ~ = T_DIR_VAR; <>
 
 let struct_elem_name :=
-  | id = T_IDENTIFIER;
-  { let name, _ = id in name }
+  | ~ = T_IDENTIFIER; <>
 
 let struct_init :=
   | T_LPAREN; ~ = separated_nonempty_list(T_COMMA, struct_elem_init); T_RPAREN; <>
@@ -1107,8 +1111,8 @@ let struct_elem_init :=
     in
     ("" (* name *), Syntax.StructElemInvalConstant(c))
   }
-  | name = struct_elem_name; T_ASSIGN; value = enum_value;
-  { (name, Syntax.StructElemInvalEnum(value)) }
+  | id = struct_elem_name; T_ASSIGN; value = enum_value;
+  { (fst id, Syntax.StructElemInvalEnum(value)) }
   (* | name = struct_elem_name; T_ASSIGN; value = array_init; {} *)
   (* | name = struct_elem_name; T_ASSIGN; value = struct_spec_init; *)
   (* {                                                              *)
@@ -1128,7 +1132,7 @@ let struct_elem_init :=
 let str_type_decl :=
   | name_type = type_decl_helper_opt; init_expr = optional_assign(constant_expr);
   {
-    let (ty_name, ty_decl_opt) = name_type in
+    let ((ty_name, ti), ty_decl_opt) = name_type in
     let ty_decl = match ty_decl_opt with
     | Some(v) -> v
     | None -> raise (SyntaxError "Missing string type name declaration")
@@ -1152,7 +1156,7 @@ let str_type_decl :=
             end
           | None -> None
       in
-      ty_name, Syntax.DTyDeclSingleElement(ty_spec, initial_value)
+      ti, (ty_name, Syntax.DTyDeclSingleElement(ty_spec, initial_value))
   }
 (* }}} *)
 
@@ -1166,9 +1170,9 @@ let direct_variable :=
 let ref_type_decl :=
   | name_type = type_decl_helper_opt; spec = ref_spec_init;
   {
-    let (ref_name, _) = name_type
+    let ((ref_name, ti), _) = name_type
     and (num_of_refs, ty, inval_opt) = spec in
-    ref_name, Syntax.DTyDeclRefType(num_of_refs, ty, inval_opt)
+    ti, (ref_name, Syntax.DTyDeclRefType(num_of_refs, ty, inval_opt))
   }
 
 (* There is typo in Standard. I believe that '; =' means ':=' *)
@@ -1179,6 +1183,17 @@ let ref_spec_init :=
 let ref_spec :=
   | refs = nonempty_list(T_REF_TO); ty = data_type_access;
   { ((List.length refs), ty) }
+
+(* POINTER TO, an extension of CODESYS and TwinCAT, is kept as a reference.
+   Only in variable declarations: in type declarations it would conflict with
+   type names. *)
+let pointer_spec :=
+  | id = T_IDENTIFIER; T_TO; ty = data_type_access;
+  {
+    let (name, _) = id in
+    if String.equal name "POINTER" then (1, ty)
+    else raise (SyntaxError (Printf.sprintf "Unexpected %s TO" name))
+  }
 
 (* ref_type_name: *)
 
@@ -1467,10 +1482,10 @@ let class_decl :=
       methods = method_decl *;
     T_END_CLASS;
   {
-    let (class_name, _) = id
+    let (class_name, class_ti) = id
     and interfaces = match ilist_opt with Some(ilist) -> ilist | None -> []
     in
-    Syntax.{ specifier; class_name; parent_name; interfaces; variables; methods; }
+    Syntax.{ specifier; class_name; class_ti; parent_name; interfaces; variables; methods; }
   }
 let class_specifier :=
   | T_FINAL; { Syntax.CFinal }
@@ -1494,11 +1509,12 @@ let interface_decl :=
       prototypes = method_prototype *;
     T_END_INTERFACE;
   {
-    let (name, _) = id
+    let (name, interface_ti) = id
     and parent_interfaces = match parents_opt with Some(p) -> p | None -> []
     in
     {
       Syntax.interface_name = name;
+      Syntax.interface_ti;
       Syntax.parents = parent_interfaces;
       Syntax.method_prototypes = prototypes;
     }
@@ -1532,14 +1548,16 @@ let access_spec :=
 
 (* {{{ Table 47 -- Program definition *)
 let prog_decl :=
-  | T_PROGRAM; n = prog_type_name; var_decls_opt = option(var_decls); ss = fb_body; T_END_PROGRAM;
+  | T_PROGRAM; id = prog_type_name_id; var_decls_opt = option(var_decls); ss = fb_body; T_END_PROGRAM;
   {
     let vds = match var_decls_opt with
       | Some v -> v
       | None -> []
     in
+    let (n, name_ti) = id in
     Syntax.{ is_retain = false;
       name = n;
+      name_ti;
       variables = vds;
       statements = ss }
   }
@@ -1547,6 +1565,10 @@ let prog_decl :=
 let prog_type_name :=
   | id = T_IDENTIFIER;
   { let name, _ = id in name }
+
+(* Same as prog_type_name, keeping the token. *)
+let prog_type_name_id :=
+  | ~ = T_IDENTIFIER; <>
 
 let prog_type_access :=
   | ~ = prog_type_name; <>
@@ -1665,7 +1687,13 @@ let access_direction :=
   {  }
 
 let task_config :=
-  | T_TASK; ~ = task_name; task_init; T_SEMICOLON; <>
+  | T_TASK; t = task_name; init = task_init; T_SEMICOLON;
+  {
+    let (single, interval, priority) = init in
+    let t = Option.value_map single ~default:t ~f:(Syntax.Task.set_single t) in
+    let t = Option.value_map interval ~default:t ~f:(Syntax.Task.set_interval t) in
+    Option.value_map priority ~default:t ~f:(fun p -> Syntax.Task.set_priority t (c_get_int_exn p))
+  }
 
 let task_name :=
   | id = T_IDENTIFIER;
@@ -1704,13 +1732,18 @@ let prog_config :=
   { Syntax.ProgramConfig.set_type_name pc tn }
   | T_PROGRAM; pc = prog_name_qual; T_WITH; t = task_name; T_COLON; tn = prog_type_name;
   { Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_task pc t) tn }
-  | T_PROGRAM; pc = prog_name_qual; T_WITH; t = task_name; T_COLON; tn = prog_type_name; T_LBRACE; cvs = separated_list(T_COMMA, prog_conf_elem); T_RBRACE;
+  | T_PROGRAM; pc = prog_name_qual; T_WITH; t = task_name; T_COLON; tn = prog_type_name; cvs = prog_conf_elems;
   {
-    let pc = Syntax.ProgramConfig.set_conn_vars pc cvs in
+    let pc = Syntax.ProgramConfig.set_conf_elems pc cvs in
     Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_task pc t) tn
   }
-  | T_PROGRAM; pc = prog_name_qual; T_COLON; tn = prog_type_access; T_LBRACE; cvs = separated_list(T_COMMA, prog_conf_elem); T_RBRACE;
-  { Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_conn_vars pc cvs) tn }
+  | T_PROGRAM; pc = prog_name_qual; T_COLON; tn = prog_type_access; cvs = prog_conf_elems;
+  { Syntax.ProgramConfig.set_type_name (Syntax.ProgramConfig.set_conf_elems pc cvs) tn }
+
+(* The standard puts them in parentheses. *)
+let prog_conf_elems :=
+  | T_LPAREN; ~ = separated_list(T_COMMA, prog_conf_elem); T_RPAREN; <>
+  | T_LBRACE; ~ = separated_list(T_COMMA, prog_conf_elem); T_RBRACE; <>
 
 (* Helper rule for prog_config *)
 let prog_config_list :=
@@ -1722,32 +1755,31 @@ let prog_config_list :=
 (* prog_conf_elems: *)
 
 let prog_conf_elem :=
-  (* | fb = fb_task
-  { fb } *)
-  | ~ = prog_cnxn; <>
+  | ~ = fb_task; <Syntax.ProgramConfig.Fb_task>
+  | ~ = prog_cnxn; <Syntax.ProgramConfig.Cnxn>
 
-(* fb_task:
-    | fn = fb_name; T_WITH; tn = task_name
-    {  } *)
+let fb_task :=
+  | id = T_IDENTIFIER; T_WITH; t = task_name;
+  { let (fb_name, fb_ti) = id in Syntax.ProgramConfig.{ fb_name; fb_ti; fb_task = t } }
 
 (* This stmt assigns program inputs and outputs to IEC variable. *)
 let prog_cnxn :=
   (* Input *)
-  | sv = symbolic_variable; T_ASSIGN; prog_data_source;
-  { mk_var_use_sym sv }
+  | sv = symbolic_variable; T_ASSIGN; src = prog_data_source;
+  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnInput; other = src } }
   (* Output *)
-  (* | v = symbolic_variable; T_SENDTO; data_sink
-  { v } *)
+  | sv = symbolic_variable; T_SENDTO; dst = data_sink;
+  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnOutput; other = Some dst } }
 
 let prog_data_source :=
-  | ~ = constant; <>
+  | constant; { None }
   (* | ~ = enumerated_value; <> *)
-  (* | ~ = global_var_access; <> *)
-  (* | ~ = direct_variable; <> *)
+  | sv = global_var_name; { Some (mk_var_use_sym sv) }
+  | dv = direct_variable; { Some (mk_var_use_dir dv) }
 
-(* let data_sink :=              *)
-(*   | ~ = global_var_access; <> *)
-(*   | ~ = direct_variable; <>   *)
+let data_sink :=
+  | sv = global_var_name; { mk_var_use_sym sv }
+  | dv = direct_variable; { mk_var_use_dir dv }
 
 (* TODO: This is not complete *)
 let config_inst_init :=
@@ -1875,7 +1907,21 @@ let primary_expr :=
     let ti = Syntax.stmt_get_ti fc in
     Syntax.ExprFuncCall(ti, fc)
   }
-  (* | ref_value {  } *)
+  (* References: NULL, REF(x) and dereferences such as r^ *)
+  | ref_val = ref_value;
+  {
+    let ti = match ref_val with
+      | Syntax.RefNull | Syntax.RefFBInstance _ -> TI.create_dummy ()
+      | Syntax.RefSymVar sv -> Syntax.SymVar.get_ti sv
+    in
+    Syntax.ExprConstant(ti, Syntax.CPointer(ti, ref_val))
+  }
+  | v = variable_access; derefs = nonempty_list(T_DEREF);
+  {
+    let ti = Syntax.VarUse.get_ti v in
+    List.fold_left derefs ~init:(Syntax.ExprVariable(ti, v))
+      ~f:(fun e _ -> Syntax.ExprUn(ti, Syntax.DEREF, e))
+  }
   | T_LPAREN; ~ = expression; T_RPAREN; <>
 
 (* Helper rule for primary_expr: "use" occurrence of enum element. Since we are not
@@ -1923,6 +1969,17 @@ let func_call :=
     let ti = Syntax.Function.get_ti f in
     Syntax.StmFuncCall(ti, f, stmts)
   }
+  (* An elementary type as an argument, as in [__NEW(INT, 10)]. The type is
+     passed as a name. *)
+  | f = func_access; T_LPAREN; ty = elem_type_name; rest = list(preceded(T_COMMA, param_assign)); T_RPAREN;
+  {
+    let ti = Syntax.Function.get_ti f in
+    let ty_arg =
+      Syntax.{ name = None; inverted = false;
+               stmt = StmExpr(ti, ExprConstant(ti, CEnumValue(ti, ety_to_string ty))) }
+    in
+    Syntax.StmFuncCall(ti, f, ty_arg :: rest)
+  }
 
 let stmt_list :=
   | s = stmt; option(T_SEMICOLON);
@@ -1943,6 +2000,17 @@ let assign_stmt :=
     let vti = Syntax.VarUse.get_ti v in
     let eti = Syntax.expr_get_ti e in
     Syntax.StmExpr(vti, Syntax.ExprBin(eti, Syntax.ExprVariable(vti, v), Syntax.ASSIGN, e))
+  }
+  (* Assignment through a reference: [r^ := e] *)
+  | v = variable; derefs = nonempty_list(T_DEREF); T_ASSIGN; e = expression;
+  {
+    let vti = Syntax.VarUse.get_ti v in
+    let eti = Syntax.expr_get_ti e in
+    let target =
+      List.fold_left derefs ~init:(Syntax.ExprVariable(vti, v))
+        ~f:(fun e _ -> Syntax.ExprUn(vti, Syntax.DEREF, e))
+    in
+    Syntax.StmExpr(vti, Syntax.ExprBin(eti, target, Syntax.ASSIGN, e))
   }
   (* Bit access such as [x.%X3 := TRUE]. The bit is kept as a member of the
      variable, like a struct field. *)
@@ -2180,30 +2248,30 @@ let var_decls :=
   { list_flatten vds }
 
 let var_decls1 :=
-  | T_VAR; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.Var(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.Var(q) in Syntax.VarDecl.set_attr v attr)
   }
-  | T_VAR_INPUT; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_INPUT; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarIn(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarIn(q) in Syntax.VarDecl.set_attr v attr)
   }
-  | T_VAR_OUTPUT; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_OUTPUT; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarOut(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarOut(q) in Syntax.VarDecl.set_attr v attr)
   }
   | T_VAR_IN_OUT; option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
     |> List.map ~f:(fun v -> Syntax.VarDecl.set_attr v Syntax.VarDecl.VarInOut)
   }
-  | T_VAR_EXTERNAL; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_EXTERNAL; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarExternal(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarExternal(q) in Syntax.VarDecl.set_attr v attr)
   }
   | ~ = var_global_decl; <>
   | T_VAR_TEMP; option(qualifier); vars = var_decls_list; T_END_VAR;
@@ -2225,17 +2293,16 @@ let var_decls1 :=
   }
 
 let var_global_decl :=
-  | T_VAR_GLOBAL; option(qualifier); vars = var_decls_list; T_END_VAR;
+  | T_VAR_GLOBAL; q = option(qualifier); vars = var_decls_list; T_END_VAR;
   {
     List.rev vars
-    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarGlobal(None) in Syntax.VarDecl.set_attr v attr)
+    |> List.map ~f:(fun v -> let attr = Syntax.VarDecl.VarGlobal(q) in Syntax.VarDecl.set_attr v attr)
   }
 
-(** We don't care. *)
 let qualifier :=
-  | T_RETAIN; {}
-  | T_NON_RETAIN; {}
-  | T_CONSTANT; {}
+  | T_RETAIN; { Syntax.VarDecl.QRetain }
+  | T_NON_RETAIN; { Syntax.VarDecl.QNonRetain }
+  | T_CONSTANT; { Syntax.VarDecl.QConstant }
 
 let var_decls_list :=
   /* nothing */
@@ -2321,7 +2388,7 @@ let var_access_decl :=
   }
 
 let var_ref_decl :=
-  | var_names = separated_nonempty_list(T_COMMA, variable_name); T_COLON; ty_specs = ref_spec;
+  | var_names = separated_nonempty_list(T_COMMA, variable_name); T_COLON; ty_specs = ref_or_pointer_spec;
   {
     let (ref_level, ref_ty) = ty_specs in
     let spec = Syntax.DTyDeclRefType(ref_level, ref_ty, None) in
@@ -2332,6 +2399,10 @@ let var_ref_decl :=
         |> Syntax.VarDecl.create ~ty_spec:(Some(spec))
       end)
   }
+
+let ref_or_pointer_spec :=
+  | ~ = ref_spec; <>
+  | ~ = pointer_spec; <>
 
 (* interface_var_decl: *)
 

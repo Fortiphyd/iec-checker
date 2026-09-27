@@ -45,10 +45,16 @@
 - Add `PLCOpen-CP20` (#49)
 - Severity levels for all checks and the `--min-severity` CLI option (#76)
 - SARIF 2.1.0 output format (`-o sarif`)
+- PLCopen Coding Guidelines importance of each rule, in `--list-checks`, JSON and SARIF output, and the `--min-plcopen-importance` option
+- JSON output of several input files is a single array
+- Parser: keep non-constant array subscripts as expressions, so variables and addresses used in them are seen by the detectors (PLCOPEN-L13, N1, CP17, unused variables)
+- Keep the position and spelling of program, class, interface and type names: PLCOPEN-N4, N6, N8, N9, N10 and CP9 report them where declared, and N4 and N10 check the names as written
+- Check application-wide rules across POUs: PLCOPEN-CP12 and CP20 across programs of one task and through called function blocks, CP26 through function blocks, output parameters and struct members, CP4 across POUs and global variables, CP1 for located globals, reads and at the access. CP20 exempts counters
+- `=>` output targets are no longer reported twice by PLCOPEN-N1
 - Record where tokens start: warnings get a `start_column`, SARIF regions cover the reported token, and directly represented variables span the whole address
 - `MultiTaskWrite`: outputs and globals written by programs in different tasks
 - Expression typing module (#71)
-- `NarrowingAssignment`: values that may not fit in the assigned variable (#73)
+- `PLCOpen-CP25`: report implicit conversions that may lose value or precision, based on expression types, in assignments (including literals out of range), call arguments and operands; allow lossless ones, as the rule does (#73)
 - `MixedTypeArithmetic`: arithmetic on operands of different numeric types (#74)
 - `PLCOpen-CP8`: detect comparisons of REAL/LREAL variables and expressions, including nested ones (#72)
 - `PLCOpen-CP28`: detect comparisons of TIME, TOD and DT variables and expressions, including timer outputs and nested comparisons

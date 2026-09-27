@@ -1,0 +1,37 @@
+(* The rule's example of structured types *)
+TYPE
+  ANALOG_SIGNAL_RANGE : (BIPOLAR_10V, unipolar10V);   (* PLCOPEN-N4 *)
+END_TYPE
+TYPE
+  ANALOG_CHANNEL_CONFIGURATION :
+    STRUCT
+      range : ANALOG_SIGNAL_RANGE;
+      MIN_SCALE : INT;   (* PLCOPEN-N4 *)
+      maxScale : INT;
+    END_STRUCT;
+END_TYPE
+
+TYPE MODE : (AUTO_MODE, manualMode); END_TYPE   (* PLCOPEN-N4 *)
+
+FUNCTION StartMotor : BOOL
+  StartMotor := TRUE;
+END_FUNCTION
+
+FUNCTION STARTMOTOR2 : BOOL   (* PLCOPEN-N4 *)
+  STARTMOTOR2 := TRUE;
+END_FUNCTION
+
+FUNCTION IO : BOOL
+  IO := TRUE;
+END_FUNCTION
+
+PROGRAM Main
+  VAR
+    mode : MODE;
+  END_VAR
+  VAR CONSTANT
+    MAX_SPEED : INT := 100;
+    minSpeed : INT := 1;   (* PLCOPEN-N4 *)
+  END_VAR
+  mode := AUTO_MODE;
+END_PROGRAM

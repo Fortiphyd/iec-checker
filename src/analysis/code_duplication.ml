@@ -82,7 +82,9 @@ let const_kind = function
 let rec expr acc e =
   see acc (S.expr_get_ti e);
   match e with
-  | S.ExprVariable (_, v) -> name acc (var_name v) (S.VarUse.get_ti v)
+  | S.ExprVariable (_, v) ->
+    name acc (var_name v) (S.VarUse.get_ti v);
+    List.iter (S.index_exprs v) ~f:(fun e -> mark acc "["; expr acc e; mark acc "]")
   | S.ExprConstant (_, c) -> node acc ("C:" ^ const_kind c)
   | S.ExprBin (_, l, op, r) ->
     node acc ("(" ^ S.show_operator op); expr acc l; expr acc r; mark acc ")"

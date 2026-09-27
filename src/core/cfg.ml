@@ -445,11 +445,15 @@ let fill_bbs_map (cfg : t) (stmts : S.statement list) : (unit) =
           Stack.push loop_ctrl_stack repeat_bb_id;
 
           (* Create basic blocks for [body_stmts]. *)
-          let body_last_ids = mk_body_bbs body_stmts [repeat_bb_id] in
+          let body_last_ids =
+            match mk_body_bbs body_stmts [repeat_bb_id] with
+            | [] -> [repeat_bb_id] (* empty body *)
+            | ids -> ids
+          in
 
-          (* Create basic block for [cond_stmt]. *)
+          (* Create basic block for [cond_stmt]. The condition follows every
+             exit of the body; there are several if it ends with IF or CASE. *)
           let cond_last_ids = mk_cond_bbs cond_stmt ~pred_ids:(body_last_ids) in
-          assert (phys_equal 1 (List.length cond_last_ids)); (* always single expression stmt *)
 
           (* Link the condition statement with a REPEAT control statement. *)
           link_preds_by_id repeat_bb_id cond_last_ids;

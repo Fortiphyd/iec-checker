@@ -11,7 +11,7 @@ let get_ty_size = function
   | S.CHAR len -> len
   | S.WCHAR len -> len * 2
   | S.TIME -> 8
-  | S.LTIME -> 16
+  | S.LTIME -> 8
   | S.SINT -> 1
   | S.INT -> 2
   | S.DINT -> 4
@@ -23,14 +23,14 @@ let get_ty_size = function
   | S.REAL -> 4
   | S.LREAL -> 8
   | S.DATE -> 8
-  | S.LDATE -> 16
+  | S.LDATE -> 8
   | S.TIME_OF_DAY -> 8
   | S.TOD -> 8
-  | S.LTOD -> 16
-  | S.DATE_AND_TIME -> 16
-  | S.LDATE_AND_TIME -> 16
+  | S.LTOD -> 8
+  | S.DATE_AND_TIME -> 8 (* same as DT *)
+  | S.LDATE_AND_TIME -> 8
   | S.DT -> 8
-  | S.LDT -> 16
+  | S.LDT -> 8
   | S.BOOL -> 1
   | S.BYTE -> 1
   | S.WORD -> 2
@@ -54,8 +54,8 @@ let unit_bits dir_var =
 
 (** Directly represented variables declared in [elem] with the number of
     address units they occupy. *)
-let located_vars elem =
-  AU.get_var_decls elem
+let located_vars_of decls =
+  decls
   |> List.filter_map ~f:(fun decl ->
       match S.VarDecl.get_located_at decl with
       | Some dir_var when Option.is_some (S.DirVar.get_loc dir_var)
@@ -87,24 +87,54 @@ let overlaps (a, ua) (b, ub) =
   let start v = List.last_exn (S.DirVar.get_path v) in
   same_space a b && start a < start b + ub && start b < start a + ua
 
-let check_elem elem =
-  let vars = located_vars elem in
-  List.filter_map vars ~f:(fun (decl, dir_var, ty, units) ->
-      Option.bind ty ~f:(fun ty ->
-          List.find vars ~f:(fun (other, other_var, _, other_units) ->
-              not (phys_equal decl other)
-              && overlaps (dir_var, units) (other_var, other_units))
-          |> Option.map ~f:(fun (_, overlapped_dir_var, _, _) ->
-              let ti = S.VarDecl.get_var_ti decl in
-              let msg =
-                Printf.sprintf "Address of direct variable %s (size %d) should not overlap with direct variable %s"
-                  (S.DirVar.get_name dir_var) (get_ty_size ty)
-                  (S.DirVar.get_name overlapped_dir_var)
-              in
-              Warn.mk_at ti "PLCOPEN-CP4" msg)))
+(** Located variables of each POU and of each block of global variables,
+    with the name of the POU, configuration or resource that declares them. *)
+let owners elems =
+  List.concat_map elems ~f:(function
+      | S.IECConfiguration (_, c) ->
+        (Printf.sprintf "configuration %s" c.name, located_vars_of c.variables)
+        :: List.map c.resources ~f:(fun (r : S.resource_decl) ->
+            (Printf.sprintf "resource %s" (Option.value r.name ~default:""),
+             located_vars_of r.variables))
+      | e ->
+        let name = Option.value_map (S.get_pou_name_as_written e) ~default:"" ~f:fst in
+        [(name, located_vars_of (AU.get_var_decls e))])
+
+(* Outputs and memory are compared across POUs. Several POUs declaring
+   variables at the same input is common and harmless. *)
+let shared_area dir_var =
+  match S.DirVar.get_loc dir_var with
+  | Some (S.DirVar.LocQ | S.DirVar.LocM) -> true
+  | Some S.DirVar.LocI | None -> false
 
 let do_check elems =
-  List.fold_left elems ~init:[] ~f:(fun acc elem -> acc @ (check_elem elem))
+  let owners = owners elems in
+  List.concat_map owners ~f:(fun (owner, vars) ->
+      List.filter_map vars ~f:(fun (decl, dir_var, ty, units) ->
+          Option.bind ty ~f:(fun ty ->
+              let overlapping (other, other_var, _, other_units) =
+                not (phys_equal decl other) && overlaps (dir_var, units) (other_var, other_units)
+              in
+              let in_owner = Option.map (List.find vars ~f:overlapping) ~f:(fun v -> (v, None)) in
+              let elsewhere () =
+                if not (shared_area dir_var) then None
+                else
+                  List.find_map owners ~f:(fun (other_owner, other_vars) ->
+                      if String.equal other_owner owner then None
+                      else
+                        Option.map (List.find other_vars ~f:overlapping)
+                          ~f:(fun v -> (v, Some other_owner)))
+              in
+              Option.first_some in_owner (elsewhere ())
+              |> Option.map ~f:(fun ((_, overlapped_dir_var, _, _), other_owner) ->
+                  let ti = S.VarDecl.get_var_ti decl in
+                  let msg =
+                    Printf.sprintf "Address of direct variable %s (size %d) should not overlap with direct variable %s%s"
+                      (S.DirVar.get_name dir_var) (get_ty_size ty)
+                      (S.DirVar.get_name overlapped_dir_var)
+                      (Option.value_map other_owner ~default:"" ~f:(fun o -> " in " ^ o))
+                  in
+                  Warn.mk_at ti "PLCOPEN-CP4" msg))))
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP4";
@@ -113,5 +143,6 @@ let detector : Detector.t = {
     "Two directly-addressed variables must not occupy overlapping memory.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP4";
   severity = IECCheckerCore.Warn.High;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

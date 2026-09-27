@@ -12,5 +12,6 @@ type t = {
   summary : string;
   doc_url : string;
   severity : Warn.severity;
+  plcopen_importance : Warn.severity option;
   check : inputs -> Warn.t list;
 }

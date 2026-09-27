@@ -1,4 +1,5 @@
-(** Detect unused variables in the source code. *)
+(** Detect unused variables in the source code: local variables of POUs, and
+    global variables of configurations (PLCopen CP24). *)
 open IECCheckerCore
 module S = Syntax
 

@@ -32,6 +32,12 @@ module TimeValue : sig
 
   val is_zero : t -> bool
 
+  val has_date : t -> bool
+  (** Whether the value has a year or month, as date literals do. *)
+
+  val has_time : t -> bool
+  (** Whether the value has hours or smaller units. *)
+
   val to_yojson : t -> Yojson.Safe.t
 end
 
@@ -89,6 +95,12 @@ module SymVar : sig
   (** [add_array_index_opaque var] Add array addressation to unknown index
       that can't be evaluated before run time, e.g. A[f(a,b)]. *)
   val get_array_indexes : t -> int option list
+
+  type index_expr = ..
+  (** An expression in an array subscript; see [Index_expr]. *)
+
+  val add_array_index_expr : t -> index_expr -> t
+  val get_array_index_exprs : t -> index_expr list
 
   val to_yojson : t -> Yojson.Safe.t
 end
@@ -293,6 +305,7 @@ and subrange_ty_spec =
 and enum_element_spec = {
   enum_type_name: string option;  (** name of enum which this element belongs to *)
   elem_name: string; (** name of the element *)
+  elem_ti: TI.t; (** position of the name *)
   initial_value: constant option; (** initial value *)
 } [@@deriving to_yojson]
 
@@ -310,6 +323,7 @@ and arr_inval = constant list [@@deriving to_yojson]
 (** Struct element specification *)
 and struct_elem_spec = {
   struct_elem_name: string;
+  struct_elem_ti: TI.t; (** position of the name *)
   struct_elem_loc: DirVar.t option;
   struct_elem_ty: single_element_ty_spec;
   struct_elem_init_value: struct_elem_init_value_spec option; (** initial values *)
@@ -409,6 +423,12 @@ and func_param_assign = {
 } [@@deriving to_yojson, show]
 (* }}} *)
 
+type SymVar.index_expr += Index_expr of expr
+
+val index_exprs : VarUse.t -> expr list
+(** [index_exprs v] The subscript expressions of the array element [v], e.g.
+    [i + 1] for [A[i + 1]]. *)
+
 (* {{{ Functions to work with statements *)
 val stmt_get_ti : statement -> TI.t
 val stmt_get_id : statement -> int
@@ -477,10 +497,41 @@ module Task : sig
   (** Set task priority value. *)
 
   val get_name : t -> string
+
+  val get_ti : t -> TI.t
+
+  val get_interval : t -> data_source option
+
+  val get_single : t -> data_source option
 end
 
 module ProgramConfig : sig
   type t
+
+  (** A function block instance of the program assigned to a task, which the
+      standard allows as [PROGRAM P : T(FB1 WITH task)]. *)
+  type fb_task = {
+    fb_name : string;
+    fb_ti : TI.t;
+    fb_task : Task.t;
+  }
+
+  type direction =
+    | ConnInput (** [input := source] *)
+    | ConnOutput (** [output => sink] *)
+
+  (** A program input connected to a data source, or an output to a sink:
+      a global variable or a directly represented variable. *)
+  type connection = {
+    param : VarUse.t;
+    dir : direction;
+    other : VarUse.t option; (** [None] for a constant source *)
+  }
+
+  (** Elements of a program configuration *)
+  type conf_elem =
+    | Cnxn of connection (** Connection of a program input or output *)
+    | Fb_task of fb_task
 
   (** Qualifier of IEC program *)
   type qualifier = QRetain | QNonRetain | QConstant
@@ -497,6 +548,9 @@ module ProgramConfig : sig
   val set_conn_vars : t -> VarUse.t list -> t
   (** Set connected variables. *)
 
+  val set_conf_elems : t -> conf_elem list -> t
+  (** Set connected variables and function block tasks. *)
+
   val set_type_name : t -> string -> t
   (** Set POU type name referenced in configuration. *)
 
@@ -511,6 +565,12 @@ module ProgramConfig : sig
 
   val get_task : t -> Task.t option
   (** Get task configuration. *)
+
+  val get_fb_tasks : t -> fb_task list
+  (** Function block instances assigned to tasks. *)
+
+  val get_connections : t -> connection list
+  (** Connections of the program's inputs and outputs, in order. *)
 
   val to_yojson : t -> Yojson.Safe.t
 end
@@ -584,6 +644,7 @@ type fb_decl = {
 type program_decl = {
   is_retain : bool;
   name : string;
+  name_ti : TI.t; (** Name of the program as written *)
   variables : VarDecl.t list; (** Variables declared in this program *)
   statements : statement list;
 }
@@ -592,6 +653,7 @@ type program_decl = {
 type class_decl = {
   specifier : class_specifier option;
   class_name : string;
+  class_ti : TI.t; (** Name of the class as written *)
   parent_name : string option; (** Name of the parent class. *)
   interfaces : string list; (** Names of the implemented interfaces. *)
   variables : VarDecl.t list; (** Variables declared in this class. *)
@@ -600,6 +662,7 @@ type class_decl = {
 [@@deriving to_yojson]
 and interface_decl = {
   interface_name : string;
+  interface_ti : TI.t; (** Name of the interface as written *)
   parents : string list; (** Names of the parent interfaces. *)
   method_prototypes : MethodPrototype.t list; (** Prototypes of the methods provided by this interface. *)
 }
@@ -640,7 +703,7 @@ type iec_library_element =
   | IECClass of         int (** id *) * class_decl         [@name "Class"]
   | IECInterface of     int (** id *) * interface_decl     [@name "Interface"]
   | IECConfiguration of int (** id *) * configuration_decl [@name "Configuration"]
-  | IECType of          int (** id *) * derived_ty_decl    [@name "Type"]
+  | IECType of          int (** id *) * TI.t (** name *) * derived_ty_decl [@name "Type"]
 [@@deriving to_yojson]
 
 val mk_pou : [< `Function of function_decl
@@ -649,7 +712,15 @@ val mk_pou : [< `Function of function_decl
              | `Class of class_decl
              | `Interface of interface_decl
              | `Configuration of configuration_decl
-             | `Type of derived_ty_decl ] -> iec_library_element
+             | `Type of TI.t * derived_ty_decl ] -> iec_library_element
+
+val get_pou_name_ti : iec_library_element -> TI.t option
+(** [get_pou_name_ti] Token of the name of the given library element, with its
+    spelling as written in [raw]; [None] for configurations. *)
+
+val get_pou_name_as_written : iec_library_element -> (string * TI.t) option
+(** [get_pou_name_as_written] Name of the given library element as written,
+    and its token; [None] for configurations. *)
 
 val get_pou_id : iec_library_element -> int
 (** [get_pou_id] Get unique identifier of the given library element. *)

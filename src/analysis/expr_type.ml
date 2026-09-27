@@ -28,13 +28,26 @@ let env_of elements elem =
           c.variables @ List.concat_map c.resources ~f:(fun (r : S.resource_decl) -> r.variables)
         | _ -> [])
   in
+  (* The result of a function is assigned to its name. *)
+  let result =
+    match elem with
+    | S.IECFunction (_, f) -> begin
+        match f.return_ty with
+        | S.TyElementary ty ->
+          [(S.Function.get_name f.id, S.DTyDeclSingleElement (S.DTySpecElementary ty, None))]
+        | S.TyDerived (S.DTyUseSingleElement se) ->
+          [(S.Function.get_name f.id, S.DTyDeclSingleElement (se, None))]
+        | _ -> []
+      end
+    | _ -> []
+  in
   {
     (* The POU's own declarations take precedence over globals. *)
     vars = Map.merge_skewed (of_alist (decl_specs globals))
-        (of_alist (decl_specs (AU.get_var_decls elem)))
+        (of_alist (result @ decl_specs (AU.get_var_decls elem)))
         ~combine:(fun ~key:_ _ local -> local);
     types = of_alist (List.filter_map elements ~f:(function
-        | S.IECType (_, (name, spec)) -> Some (name, spec)
+        | S.IECType (_, _, (name, spec)) -> Some (name, spec)
         | _ -> None));
     fbs = of_alist (List.filter_map elements ~f:(function
         | S.IECFunctionBlock (_, fb) -> Some (S.FunctionBlock.get_name fb.id, fb.variables)
@@ -61,6 +74,8 @@ and of_single env depth = function
       | None -> Unknown
     end
   | _ -> Unknown
+
+let type_of_spec env spec = of_spec env 0 spec
 
 (** Specification of a type by name, following aliases. *)
 let rec named_spec env depth name =
@@ -139,7 +154,12 @@ let const_type = function
   | S.CInteger (_, None, v) | S.CBitString (_, None, v) -> Int_literal (Some v)
   | S.CReal (_, None, _) -> Real_literal
   | S.CBool _ -> Elem S.BOOL
-  | S.CTimeValue _ -> Elem S.TIME
+  | S.CTimeValue (_, tv) ->
+    (* The parser keeps the value only. Dates have a year and month; time of
+       day literals can't be told apart from durations. *)
+    if not (S.TimeValue.has_date tv) then Elem S.TIME
+    else if S.TimeValue.has_time tv then Elem S.DT
+    else Elem S.DATE
   | S.CString _ | S.CPointer _ | S.CRange _ | S.CEnumValue _ -> Unknown
 
 (** Numeric types: signed and unsigned integers with their width in bits, and

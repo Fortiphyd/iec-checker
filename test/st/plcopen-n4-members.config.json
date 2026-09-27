@@ -1,0 +1,11 @@
+{
+  "detectors": { "enabled": ["PLCOPEN-N4"] },
+  "naming_conventions": {
+    "case": {
+      "variable": "lowerCamelCase",
+      "constant": "UPPER_SNAKE_CASE",
+      "pou": "UpperCamelCase",
+      "type": "UPPER_SNAKE_CASE"
+    }
+  }
+}

@@ -2,36 +2,35 @@ open Core
 open IECCheckerCore
 open IECCheckerAnalysis
 
-module AU = Ast_util
 module S = Syntax
 module CC = Cyclomatic_complexity
 
-let get_mccabe_violations cfg =
-  let cc = CC.eval_mccabe cfg in
+(** A warning about [elem], at its name. *)
+let warn_at elem what =
+  match S.get_pou_name_as_written elem with
+  | Some (name, ti) ->
+    Warn.mk_at ti "PLCOPEN-CP9" (Printf.sprintf "%s is too complex (%s)" name what)
+  | None -> Warn.mk 0 0 "PLCOPEN-CP9" (Printf.sprintf "Code is too complex (%s)" what)
+
+let get_mccabe_violations elem =
+  let plcopen = String.equal (Config.get ()).mccabe_variant "plcopen" in
+  let cc = if plcopen then CC.mccabe_plcopen elem else CC.mccabe elem in
   if cc > Config.mccabe_complexity_threshold () then
-    let msg = Printf.sprintf "Code is too complex (%d McCabe complexity)" cc in
-    let w = Warn.mk 0 0 "PLCOPEN-CP9" msg in
-    [w]
+    [warn_at elem (Printf.sprintf "%d McCabe complexity%s" cc
+                     (if plcopen then ", weighted as in PLCopen's examples" else ""))]
   else []
 
 let get_statements_num_violations elem =
-  let stmts_num = AU.get_stmts_num elem in
+  let stmts_num = CC.statements elem in
   if stmts_num > Config.statements_num_threshold () then
-    let msg = Printf.sprintf "Code is too complex (%d statements)" stmts_num  in
-    let w = Warn.mk 0 0 "PLCOPEN-CP9" msg in
-    [w]
+    [warn_at elem (Printf.sprintf "%d statements" stmts_num)]
   else []
 
-let do_check elems cfgs =
-  List.fold_left
-    cfgs
-    ~init:[]
-    ~f:(fun acc cfg -> acc @ (get_mccabe_violations cfg))
-  |> List.append
-  @@ List.fold_left
-    elems
-    ~init:[]
-    ~f:(fun acc elem -> acc @ (get_statements_num_violations elem))
+let do_check elems =
+  List.concat_map elems ~f:(function
+      | S.IECProgram _ | S.IECFunctionBlock _ | S.IECFunction _ | S.IECClass _ as e ->
+        get_mccabe_violations e @ get_statements_num_violations e
+      | _ -> [])
 
 let detector : Detector.t = {
   id = "PLCOPEN-CP9";
@@ -40,6 +39,7 @@ let detector : Detector.t = {
     "POUs that exceed McCabe or statement-count thresholds should be split.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP9";
   severity = IECCheckerCore.Warn.Low;
-  check = (fun (i : Detector.inputs) -> do_check i.elements i.cfgs);
+  plcopen_importance = Some IECCheckerCore.Warn.High;
+  check = (fun (i : Detector.inputs) -> do_check i.elements);
 }
 

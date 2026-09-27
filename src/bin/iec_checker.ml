@@ -232,12 +232,24 @@ let merge_files paths out_path =
     Out_channel.output_string oc (In_channel.read_all path));
   Out_channel.close_no_err oc
 
-(** Check whether an analysis pass is enabled in the current configuration. *)
+(** Built-in passes that implement PLCopen rules, with the rule and its
+    importance. *)
+let builtin_plcopen = [
+  ("MultiTaskWrite", ("PLCOPEN-CP10", W.High));
+  ("UnusedVariable", ("PLCOPEN-CP24", W.Medium));
+]
+
+let plcopen_of_builtin id = List.Assoc.find builtin_plcopen id ~equal:String.equal
+
+(** Check whether an analysis pass is enabled in the current configuration.
+    A pass that implements a PLCopen rule can be named by the rule too. *)
 let pass_enabled id =
   let cfg = Config.get () in
+  let names = id :: Option.to_list (Option.map (plcopen_of_builtin id) ~f:fst) in
+  let named ids = List.exists names ~f:(List.mem ids ~equal:String.equal) in
   match cfg.enabled_detectors with
-  | _ :: _ as ids -> List.mem ids id ~equal:String.equal
-  | [] -> not (List.mem cfg.disabled_detectors id ~equal:String.equal)
+  | _ :: _ as ids -> named ids
+  | [] -> not (named cfg.disabled_detectors)
 
 (** [run_checker] Run program on the file with [path] and returns the
     error code. *)
@@ -266,10 +278,13 @@ let is_error (w : W.t) =
   | W.Inspection ->
     List.mem ["ParserError"; "LexingError"; "UnknownError"] w.id ~equal:String.equal
 
+let detector_of (w : W.t) =
+  List.find Lib.registered_detectors ~f:(fun d -> String.equal d.Detector.id w.id)
+
 let severity_of (w : W.t) =
   if is_error w then W.High
   else
-    match List.find Lib.registered_detectors ~f:(fun d -> String.equal d.Detector.id w.id) with
+    match detector_of w with
     | Some d -> d.severity
     | None ->
       List.find_map builtin_warnings ~f:(fun (id, _, sev) ->
@@ -283,33 +298,97 @@ let parse_min_severity s =
     Printf.eprintf "Unknown severity '%s'. Supported: 'low', 'medium' and 'high'.\n" s;
     exit ReturnCode.fail
 
-(** Set severities and drop warnings below the configured minimum. *)
+let parse_min_importance s =
+  if String.is_empty s then None
+  else
+    match W.severity_of_string s with
+    | Some imp -> Some imp
+    | None ->
+      Printf.eprintf "Unknown PLCopen importance '%s'. Supported: 'low', 'medium' and 'high'.\n" s;
+      exit ReturnCode.fail
+
+(** Set severities and PLCopen importance, and drop warnings below the
+    configured minimums. With a minimum PLCopen importance, only PLCopen
+    rules are reported. *)
 let finalize ws =
-  let min = W.severity_rank (parse_min_severity (Config.get ()).min_severity) in
-  List.map ws ~f:(fun w -> { w with W.severity = severity_of w })
-  |> List.filter ~f:(fun w -> is_error w || W.severity_rank w.W.severity >= min)
+  let cfg = Config.get () in
+  let min = W.severity_rank (parse_min_severity cfg.min_severity) in
+  let min_importance = parse_min_importance cfg.min_plcopen_importance in
+  List.map ws ~f:(fun w ->
+      let plcopen =
+        match detector_of w with
+        | Some d -> Option.map d.Detector.plcopen_importance ~f:(fun imp -> (d.id, imp))
+        | None -> plcopen_of_builtin w.W.id
+      in
+      { w with W.severity = severity_of w;
+               plcopen_importance = Option.map plcopen ~f:snd;
+               plcopen_rule = Option.map plcopen ~f:fst })
+  |> List.filter ~f:(fun w ->
+      is_error w
+      || (W.severity_rank w.W.severity >= min
+          && match min_importance, w.W.plcopen_importance with
+          | None, _ -> true
+          | Some m, Some imp -> W.severity_rank imp >= W.severity_rank m
+          | Some _, None -> false))
+
+(* Columns count bytes. On lines with characters outside ASCII, such as
+   accented names or comments, they are converted to count characters. *)
+let file_lines : string array String.Table.t = String.Table.create ()
+
+let lines_of file =
+  Hashtbl.find_or_add file_lines file ~default:(fun () ->
+      try Array.of_list (In_channel.read_lines file) with _ -> [||])
+
+let char_columns ws =
+  List.map ws ~f:(fun (w : W.t) ->
+      let lines = if String.is_empty w.file then [||] else lines_of w.file in
+      if w.linenr <= 0 || w.linenr > Array.length lines then w
+      else begin
+        let line = lines.(w.linenr - 1) in
+        if String.for_all line ~f:(fun c -> Char.to_int c < 0x80) then w
+        else begin
+          (* Characters in the first [n] bytes: UTF-8 continuation bytes
+             (10xxxxxx) don't start one. *)
+          let chars n =
+            if n <= 0 then n
+            else begin
+              let upto = Int.min n (String.length line) in
+              let count = ref (n - upto) in
+              for i = 0 to upto - 1 do
+                if Char.to_int line.[i] land 0xC0 <> 0x80 then incr count
+              done;
+              !count
+            end
+          in
+          { w with column = chars w.column; start_column = chars w.start_column }
+        end
+      end)
 
 let sarif_rules () =
   List.map Lib.registered_detectors ~f:(fun d ->
       WO.{ rule_id = d.Detector.id; rule_name = d.name; help_url = d.doc_url;
-           rule_severity = d.severity })
+           rule_severity = d.severity; rule_plcopen_importance = d.plcopen_importance;
+           rule_plcopen_rule = Option.map d.plcopen_importance ~f:(fun _ -> d.id) })
   @ List.map builtin_warnings ~f:(fun (id, name, sev) ->
-      WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev })
+      let plcopen = plcopen_of_builtin id in
+      WO.{ rule_id = id; rule_name = name; help_url = ""; rule_severity = sev;
+           rule_plcopen_importance = Option.map plcopen ~f:snd;
+           rule_plcopen_rule = Option.map plcopen ~f:fst })
 
-(* SARIF is a single document for all input files, so its warnings are
-   collected and printed at exit. *)
-let sarif_pending : W.t list ref = ref []
+(* JSON and SARIF output is a single document for all input files, so their
+   warnings are collected and printed at exit. *)
+let pending : W.t list ref = ref []
 
 let report ~use_color out_fmt ws =
-  let ws = finalize ws in
+  let ws = finalize ws |> char_columns in
   match out_fmt with
-  | WO.Sarif -> sarif_pending := !sarif_pending @ ws
-  | WO.Plain | WO.Json -> WO.print_report ~doc_urls ~use_color ws out_fmt
+  | WO.Json | WO.Sarif -> pending := !pending @ ws
+  | WO.Plain -> WO.print_report ~doc_urls ~use_color ws out_fmt
 
-let print_sarif out_fmt =
+let print_pending out_fmt =
   match out_fmt with
-  | WO.Sarif -> WO.print_report ~rules:(sarif_rules ()) !sarif_pending WO.Sarif
-  | WO.Plain | WO.Json -> ()
+  | WO.Json | WO.Sarif -> WO.print_report ~rules:(sarif_rules ()) !pending out_fmt
+  | WO.Plain -> ()
 
 let run_checker path in_fmt out_fmt create_dumps merged verbose (interactive : bool) use_color : int =
   let (read_stdin : bool) = (String.equal "-" path) || (String.is_empty path) in
@@ -390,15 +469,22 @@ let print_list_checks () =
   let detectors = Lib.registered_detectors in
   let all_ids =
     List.map detectors ~f:(fun d ->
-        (d.Detector.id, W.severity_to_string d.Detector.severity, d.Detector.name))
-    @ List.map builtin_passes ~f:(fun (id, name, sev) -> (id, W.severity_to_string sev, name))
+        (d.Detector.id, W.severity_to_string d.Detector.severity,
+         Option.value_map d.Detector.plcopen_importance ~default:"-" ~f:W.severity_to_string,
+         d.Detector.name))
+    @ List.map builtin_passes ~f:(fun (id, name, sev) ->
+        match plcopen_of_builtin id with
+        | Some (rule, imp) ->
+          (id, W.severity_to_string sev, W.severity_to_string imp, Printf.sprintf "%s (%s)" name rule)
+        | None -> (id, W.severity_to_string sev, "-", name))
   in
   let id_width =
-    List.fold_left all_ids ~init:0 ~f:(fun acc (id, _, _) ->
+    List.fold_left all_ids ~init:0 ~f:(fun acc (id, _, _, _) ->
       Int.max acc (String.length id))
   in
-  List.iter all_ids ~f:(fun (id, sev, name) ->
-    Printf.printf "%-*s  %-6s  %s\n" id_width id sev name);
+  Printf.printf "%-*s  %-8s  %-8s  %s\n" id_width "CHECK" "SEVERITY" "PLCOPEN" "DESCRIPTION";
+  List.iter all_ids ~f:(fun (id, sev, imp, name) ->
+    Printf.printf "%-*s  %-8s  %-8s  %s\n" id_width id sev imp name);
   Printf.printf "\n%d check(s). See <https://iec-checker.github.io/docs/detectors/> for details.\n"
     (List.length all_ids)
 
@@ -426,6 +512,7 @@ let parse_output_format s =
 (** Load configuration from file (explicit path or auto-discovery) and merge
     with CLI overrides.  Returns the final [Config.t]. *)
 let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format ~cli_min_severity
+    ~cli_min_plcopen_importance
     ~cli_dump ~cli_merge ~cli_verbose ~cli_no_color =
   (* 1. Load base config *)
   let base = match config_path with
@@ -461,6 +548,10 @@ let load_and_merge_config ~config_path ~cli_input_format ~cli_output_format ~cli
     | Some s -> { c with min_severity = s }
     | None -> c
   in
+  let c = match cli_min_plcopen_importance with
+    | Some s -> { c with min_plcopen_importance = s }
+    | None -> c
+  in
   let c = if cli_dump then { c with dump = true } else c in
   let c = if cli_merge then { c with merge = true } else c in
   let c = if cli_verbose then { c with verbose = true } else c in
@@ -490,6 +581,17 @@ let () =
       ~description:
         "Output format for the checker messages. Supported formats: 'plain', 'json' and 'sarif' (SARIF 2.1.0)."
       ~placeholder: "OUTPUT_FORMAT"
+      ()
+  in
+
+  let cli_min_plcopen_importance =
+    Clap.optional_string
+      ~long: "min-plcopen-importance"
+      ~description:
+        "Only report PLCopen Coding Guidelines rules of at least this importance: \
+         'low', 'medium' or 'high'. Checks that aren't PLCopen rules are not reported. \
+         Errors are always reported."
+      ~placeholder: "IMPORTANCE"
       ()
   in
 
@@ -624,6 +726,7 @@ let () =
     ~cli_input_format
     ~cli_output_format
     ~cli_min_severity
+    ~cli_min_plcopen_importance
     ~cli_dump:d
     ~cli_merge:m
     ~cli_verbose:v
@@ -643,6 +746,7 @@ let () =
   let input_format = parse_input_format cfg.input_format in
   let output_format = parse_output_format cfg.output_format in
   ignore (parse_min_severity cfg.min_severity : W.severity);
+  ignore (parse_min_importance cfg.min_plcopen_importance : W.severity option);
   let use_color = cfg.use_color in
   let create_dumps = cfg.dump in
   let verbose = cfg.verbose in
@@ -674,6 +778,6 @@ let () =
             ~init:[]
           |> List.for_all ~f:(phys_equal ReturnCode.ok))
       in
-      print_sarif output_format;
+      print_pending output_format;
       if success
       then exit ReturnCode.ok else exit ReturnCode.fail

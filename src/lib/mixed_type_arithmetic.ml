@@ -56,5 +56,6 @@ let detector : Detector.t = {
     "Mixing numeric types, e.g. INT and REAL, relies on implicit conversions.";
   doc_url = "";
   severity = Warn.Low;
+  plcopen_importance = None;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

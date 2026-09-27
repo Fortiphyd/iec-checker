@@ -9,12 +9,14 @@ type t = {
   disabled_detectors : string list;
   enabled_detectors  : string list;
   mccabe_complexity  : int;
+  mccabe_variant     : string;
   statements_count   : int;
   max_string_length  : int;
   duplicate_code_size : int;
   output_format      : string;
   use_color          : bool;
   min_severity       : string;
+  min_plcopen_importance : string;
   input_format       : string;
   merge              : bool;
   exclude_paths      : string list;
@@ -25,21 +27,28 @@ type t = {
   naming_case_constant : string option;
   naming_case_pou      : string option;
   naming_case_type     : string option;
+  naming_case_member   : string option;
+  naming_case_enum_value : string option;
   naming_min_length    : int;
+  naming_min_length_local : int;
   naming_max_length    : int;
   naming_udt_prefixes  : (string * string) list;
+  naming_scope_prefixes : (string * string) list;
+  naming_allow_non_ascii : bool;
 }
 
 let default = {
   disabled_detectors = [];
   enabled_detectors  = [];
   mccabe_complexity  = 15;
+  mccabe_variant     = "standard";
   statements_count   = 25;
   max_string_length  = 4096;
   duplicate_code_size = 25;
   output_format      = "plain";
   use_color          = true;
   min_severity       = "low";
+  min_plcopen_importance = "";
   input_format       = "st";
   merge              = false;
   exclude_paths      = [];
@@ -50,10 +59,37 @@ let default = {
   naming_case_constant = None;
   naming_case_pou      = None;
   naming_case_type     = None;
+  naming_case_member   = None;
+  naming_case_enum_value = None;
   naming_min_length    = 0;
+  naming_min_length_local = 0;
   naming_max_length    = 0;
   naming_udt_prefixes  = [];
+  naming_scope_prefixes = [];
+  naming_allow_non_ascii = false;
 }
+
+(* ---------- Naming conventions ------------------------------------------- *)
+
+let case_styles =
+  ["UpperCamelCase"; "lowerCamelCase"; "UPPER_SNAKE_CASE"; "lower_snake_case";
+   "alllowercase"; "ALLUPPERCASE"]
+
+let udt_kinds =
+  ["ENUM"; "NAMED"; "SUBRANGE"; "ARRAY"; "STRUCT"; "REF"; "ALIAS"; "UDT";
+   "FUNCTION"; "FUNCTION_BLOCK"; "PROGRAM"; "CLASS"; "INTERFACE"]
+
+let scopes = ["GLOBAL"; "LOCAL"; "TEMP"; "INPUT"; "OUTPUT"; "IN_OUT"; "PARAMETER"]
+
+let canonical_type_key k =
+  match String.uppercase k with
+  | "TOD" -> "TIME_OF_DAY"
+  | "LTOD" -> "LTIME_OF_DAY"
+  | "DT" -> "DATE_AND_TIME"
+  | "LDT" -> "LDATE_AND_TIME"
+  | "REFERENCE" -> "REF"
+  | "FB" -> "FUNCTION_BLOCK"
+  | k -> k
 
 (* Mutable global — set once in the binary entry point before analysis. *)
 let current = ref default
@@ -113,6 +149,28 @@ let string_opt_field json key =
 
 (* ---------- Deserialization ---------------------------------------------- *)
 
+exception Invalid of string
+
+let invalid fmt = Printf.ksprintf (fun s -> raise (Invalid s)) fmt
+
+let case_style_field json key =
+  Option.map (string_opt_field json key) ~f:(fun style ->
+      if List.mem case_styles style ~equal:String.equal then style
+      else invalid "naming_conventions.case.%s: unknown style %S; expected one of %s"
+          key style (String.concat ~sep:", " case_styles))
+
+(** A map of prefixes whose keys are canonical and, if [allowed] is given,
+    among them. *)
+let prefix_map_field ?allowed json key =
+  string_map_field json key ~default:[]
+  |> List.map ~f:(fun (k, v) ->
+      let k = canonical_type_key k in
+      Option.iter allowed ~f:(fun allowed ->
+          if not (List.mem allowed k ~equal:String.equal) then
+            invalid "naming_conventions.%s: unknown key %S; expected one of %s"
+              key k (String.concat ~sep:", " allowed));
+      (k, v))
+
 let of_yojson (json : Yojson.Safe.t) : (t, string) result =
   try
     let detectors  = Option.value (member "detectors"  json) ~default:`Null in
@@ -126,27 +184,42 @@ let of_yojson (json : Yojson.Safe.t) : (t, string) result =
       disabled_detectors = string_list_field detectors "disabled"  ~default:default.disabled_detectors;
       enabled_detectors  = string_list_field detectors "enabled"   ~default:default.enabled_detectors;
       mccabe_complexity  = int_field thresholds "mccabe_complexity" ~default:default.mccabe_complexity;
+      mccabe_variant     =
+        (match string_field thresholds "mccabe_variant" ~default:default.mccabe_variant with
+         | "standard" | "plcopen" as v -> v
+         | v -> invalid "thresholds.mccabe_variant: unknown variant %S; expected standard or plcopen" v);
       statements_count   = int_field thresholds "statements_count"  ~default:default.statements_count;
       max_string_length  = int_field thresholds "max_string_length" ~default:default.max_string_length;
       duplicate_code_size = int_field thresholds "duplicate_code_size" ~default:default.duplicate_code_size;
       output_format      = string_field output "format"    ~default:default.output_format;
       use_color          = bool_field   output "color"     ~default:default.use_color;
       min_severity       = string_field output "min_severity" ~default:default.min_severity;
+      min_plcopen_importance =
+        string_field output "min_plcopen_importance" ~default:default.min_plcopen_importance;
       input_format       = string_field input  "format"    ~default:default.input_format;
       merge              = bool_field   input  "merge"     ~default:default.merge;
       exclude_paths      = string_list_field input "exclude_paths" ~default:default.exclude_paths;
       dump               = bool_field analysis "dump"    ~default:default.dump;
       verbose            = bool_field analysis "verbose" ~default:default.verbose;
-      naming_type_prefixes = string_map_field naming "type_prefixes" ~default:default.naming_type_prefixes;
-      naming_case_variable = string_opt_field naming_case "variable";
-      naming_case_constant = string_opt_field naming_case "constant";
-      naming_case_pou      = string_opt_field naming_case "pou";
-      naming_case_type     = string_opt_field naming_case "type";
+      naming_type_prefixes = prefix_map_field naming "type_prefixes";
+      naming_case_variable = case_style_field naming_case "variable";
+      naming_case_constant = case_style_field naming_case "constant";
+      naming_case_pou      = case_style_field naming_case "pou";
+      naming_case_type     = case_style_field naming_case "type";
+      naming_case_member   = case_style_field naming_case "struct_member";
+      naming_case_enum_value = case_style_field naming_case "enum_value";
       naming_min_length    = int_field naming "min_length" ~default:default.naming_min_length;
+      naming_min_length_local =
+        int_field naming "min_length_local" ~default:default.naming_min_length_local;
       naming_max_length    = int_field naming "max_length" ~default:default.naming_max_length;
-      naming_udt_prefixes  = string_map_field naming "udt_prefixes" ~default:default.naming_udt_prefixes;
+      naming_udt_prefixes  = prefix_map_field ~allowed:udt_kinds naming "udt_prefixes";
+      naming_scope_prefixes = prefix_map_field ~allowed:scopes naming "scope_prefixes";
+      naming_allow_non_ascii =
+        bool_field naming "allow_non_ascii" ~default:default.naming_allow_non_ascii;
     }
-  with exn ->
+  with
+  | Invalid msg -> Error msg
+  | exn ->
     Error (Printf.sprintf "Failed to parse configuration: %s" (Exn.to_string exn))
 
 (* ---------- Serialization ------------------------------------------------ *)
@@ -163,6 +236,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
     ];
     "thresholds", `Assoc [
       "mccabe_complexity", `Int c.mccabe_complexity;
+      "mccabe_variant", `String c.mccabe_variant;
       "statements_count",  `Int c.statements_count;
       "max_string_length", `Int c.max_string_length;
       "duplicate_code_size", `Int c.duplicate_code_size;
@@ -171,6 +245,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
       "format", `String c.output_format;
       "color",  `Bool   c.use_color;
       "min_severity", `String c.min_severity;
+      "min_plcopen_importance", `String c.min_plcopen_importance;
     ];
     "input", `Assoc [
       "format",        `String c.input_format;
@@ -188,10 +263,15 @@ let to_yojson (c : t) : Yojson.Safe.t =
         "constant", opt_string c.naming_case_constant;
         "pou",      opt_string c.naming_case_pou;
         "type",     opt_string c.naming_case_type;
+        "struct_member", opt_string c.naming_case_member;
+        "enum_value", opt_string c.naming_case_enum_value;
       ];
       "min_length", `Int c.naming_min_length;
+      "min_length_local", `Int c.naming_min_length_local;
       "max_length", `Int c.naming_max_length;
       "udt_prefixes", string_map_to_json c.naming_udt_prefixes;
+      "scope_prefixes", string_map_to_json c.naming_scope_prefixes;
+      "allow_non_ascii", `Bool c.naming_allow_non_ascii;
     ];
   ]
 

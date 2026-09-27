@@ -12,6 +12,8 @@ type rule = {
   rule_name : string;
   help_url : string;
   rule_severity : W.severity;
+  rule_plcopen_importance : W.severity option;
+  rule_plcopen_rule : string option; (** The PLCopen rule the check implements *)
 }
 
 val print_report :

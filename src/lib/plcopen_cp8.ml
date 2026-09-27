@@ -13,6 +13,11 @@ let is_float env e =
   | T.Elem (S.REAL | S.LREAL) | T.Real_literal -> true
   | _ -> false
 
+(** The rule's exception: comparing to 0.0. *)
+let is_zero = function
+  | S.ExprConstant (_, (S.CReal (_, _, 0.0) | S.CInteger (_, _, 0))) -> true
+  | _ -> false
+
 let check_elem elements elem =
   let env = T.env_of elements elem in
   (* Comparisons can be nested in other expressions. Call arguments are
@@ -21,7 +26,8 @@ let check_elem elements elem =
     | S.ExprBin (ti, lhs, op, rhs) ->
       let acc = check (check acc lhs) rhs in
       begin match op with
-        | S.EQ | S.NEQ when is_float env lhs || is_float env rhs ->
+        | S.EQ | S.NEQ when (is_float env lhs || is_float env rhs)
+                            && not (is_zero lhs || is_zero rhs) ->
           let msg = "Floating point comparison shall not be equality or inequality" in
           Warn.mk_at ti "PLCOPEN-CP8" msg :: acc
         | _ -> acc
@@ -44,5 +50,6 @@ let detector : Detector.t = {
     "Use a tolerance instead of [=] or [<>] when comparing [REAL] values.";
   doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP8";
   severity = IECCheckerCore.Warn.Medium;
+  plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);
 }

@@ -55,6 +55,11 @@ module TimeValue = struct
 
   let to_string tv = show tv
 
+  let has_date tv = tv.y <> 0 || tv.mo <> 0
+
+  let has_time tv =
+    Float.(tv.h <> 0. || tv.m <> 0. || tv.s <> 0. || tv.ms <> 0. || tv.us <> 0. || tv.ns <> 0.)
+
   let is_zero tv = phys_equal tv.d 0.
   (* TODO: List.map ~f(fun fv -> phys_equal fv 0.) ???Fields *)
 
@@ -102,15 +107,24 @@ module type ID = sig
 end
 
 module SymVar = struct
+  (* Extended with a constructor holding an expression once expressions are
+     defined, see [Index_expr]. *)
+  type index_expr = ..
+
+  let index_expr_to_yojson_ref : (index_expr -> Yojson.Safe.t) ref = ref (fun _ -> `Null)
+  let index_expr_to_yojson e = !index_expr_to_yojson_ref e
+  let pp_index_expr fmt _ = Format.pp_print_string fmt "<index>"
+
   type t = {
     name : string;
     ti : TI.t;
     array_indexes: int option list;
+    array_index_exprs: index_expr list;
   } [@@deriving to_yojson, show]
 
   let create name ti =
     let array_indexes = [] in
-    { name; ti; array_indexes; }
+    { name; ti; array_indexes; array_index_exprs = [] }
 
   let get_name id = id.name
   let get_ti id = id.ti
@@ -120,6 +134,10 @@ module SymVar = struct
   let add_array_index_opaque var =
     { var with array_indexes = var.array_indexes @ [None] }
   let get_array_indexes var = var.array_indexes
+
+  let add_array_index_expr var e =
+    { var with array_index_exprs = var.array_index_exprs @ [e] }
+  let get_array_index_exprs var = var.array_index_exprs
 
   let to_yojson t = to_yojson t
 end
@@ -429,6 +447,7 @@ and subrange_ty_spec =
 and enum_element_spec = {
   enum_type_name: string option;  (** name of enum which this element belongs to *)
   elem_name: string; (** name of the element *)
+  elem_ti: TI.t; (** position of the name *)
   initial_value: constant option; (** initial value *)
 } [@@deriving to_yojson]
 
@@ -446,6 +465,7 @@ and arr_inval = constant list [@@deriving to_yojson]
 (** Struct element specification *)
 and struct_elem_spec = {
   struct_elem_name: string;
+  struct_elem_ti: TI.t; (** position of the name *)
   struct_elem_loc: DirVar.t option;
   struct_elem_ty: single_element_ty_spec;
   struct_elem_init_value: struct_elem_init_value_spec option; (** initial values *)
@@ -543,6 +563,21 @@ and func_param_assign = {
   inverted : bool; (** has inversion in output assignment *)
 } [@@deriving to_yojson, show]
 (* }}} *)
+
+type SymVar.index_expr += Index_expr of expr
+
+let () =
+  SymVar.index_expr_to_yojson_ref := function
+    | Index_expr e -> expr_to_yojson e
+    | _ -> `Null
+
+let index_exprs v =
+  match VarUse.get_loc v with
+  | VarUse.SymVar sv ->
+    List.filter_map (SymVar.get_array_index_exprs sv) ~f:(function
+        | Index_expr e -> Some e
+        | _ -> None)
+  | VarUse.DirVar _ -> []
 
 (* {{{ Functions to work with statements *)
 let stmt_get_ti = function
@@ -751,12 +786,39 @@ module Task = struct
 
   let get_name t = t.name
 
+  let get_ti t = t.ti
+
+  let get_interval t = t.interval
+
+  let get_single t = t.single
+
 end
 
 module ProgramConfig = struct
   (** Qualifier of IEC program *)
   type qualifier = QRetain | QNonRetain | QConstant
   [@@deriving to_yojson]
+
+  (** A function block instance of the program assigned to a task. *)
+  type fb_task = {
+    fb_name : string;
+    fb_ti : TI.t;
+    fb_task : Task.t;
+  } [@@deriving to_yojson]
+
+  type direction = ConnInput | ConnOutput
+  [@@deriving to_yojson]
+
+  (** A program input connected to a data source, or an output to a sink. *)
+  type connection = {
+    param : VarUse.t;
+    dir : direction;
+    other : VarUse.t option; (** [None] for a constant source *)
+  } [@@deriving to_yojson]
+
+  type conf_elem =
+    | Cnxn of connection
+    | Fb_task of fb_task
 
   type t = {
     name : string;
@@ -765,6 +827,8 @@ module ProgramConfig = struct
     task : Task.t option;
     conn_vars : VarUse.t list; (** Variables connected to program data flow. *)
     type_name : string option; (** POU type name referenced in configuration. *)
+    fb_tasks : fb_task list;
+    connections : connection list;
   } [@@deriving to_yojson]
 
   let create name ti =
@@ -772,13 +836,21 @@ module ProgramConfig = struct
     let task = None in
     let conn_vars = [] in
     let type_name = None in
-    { name; ti; qual; task; conn_vars; type_name }
+    { name; ti; qual; task; conn_vars; type_name; fb_tasks = []; connections = [] }
 
   let set_qualifier pc q = { pc with qual = Some q }
 
   let set_task pc t = { pc with task = Some t }
 
   let set_conn_vars pc conn_vars = { pc with conn_vars }
+
+  let set_conf_elems pc elems =
+    let connections, fb_tasks =
+      List.partition_map elems ~f:(function
+          | Cnxn c -> Either.First c
+          | Fb_task t -> Either.Second t)
+    in
+    { pc with conn_vars = List.map connections ~f:(fun c -> c.param); fb_tasks; connections }
 
   let set_type_name pc tn = { pc with type_name = Some tn }
 
@@ -789,6 +861,10 @@ module ProgramConfig = struct
   let get_ti t = t.ti
 
   let get_task t = t.task
+
+  let get_fb_tasks t = t.fb_tasks
+
+  let get_connections t = t.connections
 
   let to_yojson t = to_yojson t
 end
@@ -887,6 +963,7 @@ type fb_decl = {
 type program_decl = {
   is_retain : bool;
   name : string;
+  name_ti : TI.t; (** Name of the program as written *)
   variables : VarDecl.t list;
   statements : statement list;
 }
@@ -895,6 +972,7 @@ type program_decl = {
 type class_decl = {
   specifier : class_specifier option;
   class_name : string;
+  class_ti : TI.t; (** Name of the class as written *)
   parent_name : string option; (** Name of the parent class. *)
   interfaces : string list; (** Names of the implemented interfaces. *)
   variables : VarDecl.t list; (** Variables declared in this class. *)
@@ -903,6 +981,7 @@ type class_decl = {
 [@@deriving to_yojson]
 and interface_decl = {
   interface_name : string;
+  interface_ti : TI.t; (** Name of the interface as written *)
   parents : string list; (** Names of the parent interfaces. *)
   method_prototypes : MethodPrototype.t list; (** Prototypes of the methods provided by this interface. *)
 }
@@ -940,7 +1019,7 @@ type iec_library_element =
   | IECClass of         int (** id *) * class_decl         [@name "Class"]
   | IECInterface of     int (** id *) * interface_decl     [@name "Interface"]
   | IECConfiguration of int (** id *) * configuration_decl [@name "Configuration"]
-  | IECType of          int (** id *) * derived_ty_decl    [@name "Type"]
+  | IECType of          int (** id *) * TI.t (** name *) * derived_ty_decl [@name "Type"]
 [@@deriving to_yojson]
 
 let next_id =
@@ -956,7 +1035,29 @@ let mk_pou = function
   | `Class         decl -> let id = next_id () in IECClass(id, decl)
   | `Interface     decl -> let id = next_id () in IECInterface(id, decl)
   | `Configuration decl -> let id = next_id () in IECConfiguration(id, decl)
-  | `Type          decl -> let id = next_id () in IECType(id, decl)
+  | `Type (ti, decl)   -> let id = next_id () in IECType(id, ti, decl)
+
+let get_pou_name_ti = function
+  | IECFunction (_, f)       -> Some (Function.get_ti f.id)
+  | IECFunctionBlock (_, fb) -> Some (FunctionBlock.get_ti fb.id)
+  | IECProgram (_, p)        -> Some p.name_ti
+  | IECClass (_, c)          -> Some c.class_ti
+  | IECInterface (_, i)      -> Some i.interface_ti
+  | IECType (_, ti, _)       -> Some ti
+  | IECConfiguration _       -> None
+
+let get_pou_name_as_written e =
+  let name = match e with
+    | IECFunction (_, f)       -> Function.get_name f.id
+    | IECFunctionBlock (_, fb) -> FunctionBlock.get_name fb.id
+    | IECProgram (_, p)        -> p.name
+    | IECClass (_, c)          -> c.class_name
+    | IECInterface (_, i)      -> i.interface_name
+    | IECType (_, _, (n, _))   -> n
+    | IECConfiguration (_, c)  -> c.name
+  in
+  Option.map (get_pou_name_ti e) ~f:(fun (ti : TI.t) ->
+      ((if String.is_empty ti.raw then name else ti.raw), ti))
 
 let get_pou_id = function
   | IECFunction (id, _)      -> id
@@ -965,7 +1066,7 @@ let get_pou_id = function
   | IECClass (id, _)         -> id
   | IECInterface (id, _)     -> id
   | IECConfiguration (id, _) -> id
-  | IECType (id, _)          -> id
+  | IECType (id, _, _)       -> id
 
 let get_pou_vars_decl = function
   | IECFunction (_, f)       -> f.variables

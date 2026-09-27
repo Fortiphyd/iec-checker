@@ -1,0 +1,25 @@
+(* Program configurations with connections and function block tasks, as in
+   Figure 20 of IEC 61131-3. Literal prefixes are case-insensitive. *)
+PROGRAM F
+  VAR_INPUT x1 : BOOL; END_VAR
+  VAR_OUTPUT y1 : BOOL; END_VAR
+  y1 := x1;
+END_PROGRAM
+
+PROGRAM G
+  VAR_INPUT IN1 : INT; END_VAR
+  VAR_OUTPUT OUT1 : BYTE; END_VAR
+  VAR FB1 : TON; FB2 : TON; END_VAR
+  OUT1 := 0;
+END_PROGRAM
+
+CONFIGURATION C
+  VAR_GLOBAL w : BYTE; limit : INT; END_VAR
+  RESOURCE STATION_1 ON PROCESSOR_TYPE_1
+    TASK SLOW_1(INTERVAL := t#20ms, PRIORITY := 2);
+    TASK FAST_1(INTERVAL := lt#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH SLOW_1 : F(x1 := %IX1.1, y1 => %QX1.0);
+    PROGRAM P2 : G(IN1 := limit, OUT1 => w, FB1 WITH SLOW_1, FB2 WITH FAST_1);
+    PROGRAM P3 WITH FAST_1 : G(IN1 := 5);
+  END_RESOURCE
+END_CONFIGURATION
