@@ -1,5 +1,26 @@
 ## Unreleased
 
+Changes of the Fortiphyd fork:
+
+- Taint analysis: outputs (%Q) driven by physical inputs (%I) or network-writable memory (%M) without a bounds check, through function blocks, functions, globals and program connections (`TaintedVariable`)
+- `MultiTaskWrite` (PLCopen CP10): outputs and globals written from several tasks
+- `DuplicateCode` and `InconsistentCopy`: duplicated code, and copies that missed a rename
+- `MixedTypeArithmetic`, and expression types used by CP8, CP25 and CP28
+- Add `PLCOPEN-CP7`, `PLCOPEN-CP12`, `PLCOPEN-CP20`, `PLCOPEN-E1`, `PLCOPEN-E2` and `PLCOPEN-E3`
+- `UnusedVariable` implements PLCopen CP24: unused globals too, and called function block instances are used
+- Fix the PLCopen detectors after an audit against the guidelines
+- Severities, PLCopen importance, `--min-severity`, `--min-plcopen-importance` and SARIF output
+- `thresholds.mccabe_variant` for CP9, and statements counted once
+- Naming conventions: scope prefixes, struct members, enum values, more case styles and name kinds; invalid values are errors
+- Parser: references, `POINTER TO`, `__NEW`, program connections, task settings, non-ASCII names, member names as written and positions
+- Columns count characters, and warnings report where tokens start
+- `--version`
+- Documentation in `docs/`, linked from warnings
+- Release builds for Linux and macOS, and Docker images on the GitHub Container Registry
+
+Changes of iec-checker:
+
+
 - Support OCaml 5.1+ and Core 0.16+
 - Migrate the project from `Core_kernel` to `Core`
 - Driver: remove deprecated `Caml` module calls in the driver and lexer

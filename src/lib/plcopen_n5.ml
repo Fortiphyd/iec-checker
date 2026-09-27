@@ -52,7 +52,7 @@ let detector : Detector.t = {
   summary =
     "Local variable declarations must not reuse a name already declared at \
      global scope.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N5";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-N5";
   severity = IECCheckerCore.Warn.Medium;
   plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

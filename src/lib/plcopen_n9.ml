@@ -113,7 +113,7 @@ let detector : Detector.t = {
   summary =
     "Tasks, programs, function blocks, functions, variables and UDTs should \
      not share a name in the same scope.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N9";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-N9";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

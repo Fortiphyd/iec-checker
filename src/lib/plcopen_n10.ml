@@ -34,7 +34,7 @@ let detector : Detector.t = {
   summary =
     "User-defined types and POUs should start with a configurable prefix \
      based on their kind.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N10";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-N10";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

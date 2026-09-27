@@ -109,7 +109,7 @@ let detector : Detector.t = {
   summary =
     "Variable names should start with configurable scope and type prefixes \
      (Hungarian notation).";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N2";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-N2";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.Low;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

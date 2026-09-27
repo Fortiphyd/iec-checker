@@ -176,7 +176,7 @@ let detector : Detector.t = {
   name = "Data type conversion should be explicit";
   summary =
     "Implicit conversions that may lose value or precision should be explicit.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP25";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-CP25";
   severity = IECCheckerCore.Warn.Medium;
   plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

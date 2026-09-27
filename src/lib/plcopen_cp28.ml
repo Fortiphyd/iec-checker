@@ -188,7 +188,7 @@ let detector : Detector.t = {
   summary =
     "Use range comparisons instead of [=] / [<>] when comparing [TIME] values, \
      including times held in integers.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP28";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-CP28";
   severity = IECCheckerCore.Warn.Medium;
   plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

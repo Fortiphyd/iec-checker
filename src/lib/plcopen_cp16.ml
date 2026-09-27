@@ -65,7 +65,7 @@ let detector : Detector.t = {
   summary =
     "A task in a RESOURCE block should only execute PROGRAM instances, \
      not functions or FUNCTION_BLOCK instances.";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-CP16";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-CP16";
   severity = IECCheckerCore.Warn.Medium;
   plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

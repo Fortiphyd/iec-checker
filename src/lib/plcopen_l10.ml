@@ -18,7 +18,7 @@ let detector : Detector.t = {
   name = "Usage of CONTINUE and EXIT instructions should be avoided";
   summary =
     "Loop bodies should fall through naturally instead of using [CONTINUE] / [EXIT].";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-L10";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-L10";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.Medium;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

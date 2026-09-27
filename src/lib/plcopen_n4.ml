@@ -179,7 +179,7 @@ let detector : Detector.t = {
   summary =
     "Identifiers should follow a configurable naming convention per element \
      kind (variable, constant, POU, type).";
-  doc_url = "https://iec-checker.github.io/docs/detectors/PLCOPEN-N4";
+  doc_url = IECCheckerCore.Project.check_doc_url "PLCOPEN-N4";
   severity = IECCheckerCore.Warn.Low;
   plcopen_importance = Some IECCheckerCore.Warn.High;
   check = (fun (i : Detector.inputs) -> do_check i.elements);

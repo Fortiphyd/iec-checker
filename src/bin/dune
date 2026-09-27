@@ -7,6 +7,14 @@
  (preprocess
   (pps ppx_variants_conv ppx_jane)))
 
+; The version in dune-project
+(rule
+ (target version.ml)
+ (action
+  (with-stdout-to
+   %{target}
+   (echo "let version = \"%{version:iec_checker}\"\n"))))
+
 (env
  (dev
   (flags
