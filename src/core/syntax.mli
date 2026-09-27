@@ -495,6 +495,8 @@ module Task : sig
   (** Set task priority value. *)
 
   val get_name : t -> string
+
+  val get_ti : t -> TI.t
 end
 
 module ProgramConfig : sig

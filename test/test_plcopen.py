@@ -388,7 +388,15 @@ def test_n9():
     fdump = f'{f}.dump.json'
     warns, rc = run_checker([f])
     assert rc == 0
-    assert len(filter_warns(warns, 'PLCOPEN-N9')) == 2
+    ws = filter_warns(warns, 'PLCOPEN-N9')
+    with open(f) as fp:
+        expected = [i for i, line in enumerate(fp, 1) if '(* PLCOPEN-N9 *)' in line]
+    assert sorted(w.linenr for w in ws) == expected
+    msgs = {w.linenr: w.msg for w in ws}
+    assert msgs[9] == ('Name MyCalculation of this FUNCTION_BLOCK is also used for '
+                       'a variable on line 11, a global variable on line 35')
+    assert msgs[17] == 'Name Scale of this FUNCTION is also used for a FUNCTION_BLOCK on line 22'
+    assert msgs[41] == 'Name slow of this task is also used for a global variable on line 36'
     with DumpManager(fdump):
         pass
 

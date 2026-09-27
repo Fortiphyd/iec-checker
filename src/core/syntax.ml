@@ -784,6 +784,8 @@ module Task = struct
 
   let get_name t = t.name
 
+  let get_ti t = t.ti
+
 end
 
 module ProgramConfig = struct
