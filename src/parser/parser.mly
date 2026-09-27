@@ -1747,21 +1747,21 @@ let fb_task :=
 (* This stmt assigns program inputs and outputs to IEC variable. *)
 let prog_cnxn :=
   (* Input *)
-  | sv = symbolic_variable; T_ASSIGN; prog_data_source;
-  { mk_var_use_sym sv }
+  | sv = symbolic_variable; T_ASSIGN; src = prog_data_source;
+  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnIn; other = src } }
   (* Output *)
-  | sv = symbolic_variable; T_SENDTO; data_sink;
-  { mk_var_use_sym sv }
+  | sv = symbolic_variable; T_SENDTO; dst = data_sink;
+  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnOut; other = Some dst } }
 
 let prog_data_source :=
-  | constant; {}
+  | constant; { None }
   (* | ~ = enumerated_value; <> *)
-  | global_var_name; {}
-  | direct_variable; {}
+  | sv = global_var_name; { Some (mk_var_use_sym sv) }
+  | dv = direct_variable; { Some (mk_var_use_dir dv) }
 
 let data_sink :=
-  | global_var_name; {}
-  | direct_variable; {}
+  | sv = global_var_name; { mk_var_use_sym sv }
+  | dv = direct_variable; { mk_var_use_dir dv }
 
 (* TODO: This is not complete *)
 let config_inst_init :=

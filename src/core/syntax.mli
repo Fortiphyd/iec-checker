@@ -508,9 +508,21 @@ module ProgramConfig : sig
     fb_task : Task.t;
   }
 
+  type direction =
+    | ConnIn (** [input := source] *)
+    | ConnOut (** [output => sink] *)
+
+  (** A program input connected to a data source, or an output to a sink:
+      a global variable or a directly represented variable. *)
+  type connection = {
+    param : VarUse.t;
+    dir : direction;
+    other : VarUse.t option; (** [None] for a constant source *)
+  }
+
   (** Elements of a program configuration *)
   type conf_elem =
-    | Cnxn of VarUse.t (** Connection of a program input or output *)
+    | Cnxn of connection (** Connection of a program input or output *)
     | Fb_task of fb_task
 
   (** Qualifier of IEC program *)
@@ -548,6 +560,9 @@ module ProgramConfig : sig
 
   val get_fb_tasks : t -> fb_task list
   (** Function block instances assigned to tasks. *)
+
+  val get_connections : t -> connection list
+  (** Connections of the program's inputs and outputs, in order. *)
 
   val to_yojson : t -> Yojson.Safe.t
 end

@@ -10,7 +10,8 @@ module Warn = IECCheckerCore.Warn
 
    Program instances and their tasks come from the RESOURCE blocks of each
    CONFIGURATION. Writes made by function blocks and functions a program
-   calls count as writes of the program. Each configuration is a separate
+   calls count as writes of the program, and so do writes of the variables
+   its outputs are connected to in the configuration. Each configuration is a separate
    PLC, so only instances of one configuration are compared. *)
 
 module PM = Program_model
@@ -25,7 +26,7 @@ let shown (r : PM.resolved) =
 let check_configuration effects (c : S.configuration_decl) =
   let by_key = String.Table.create () in
   List.iter (PM.instances c) ~f:(fun inst ->
-      let writes = Option.value_map inst.type_name ~default:[] ~f:(fun t -> (effects t).PM.writes) in
+      let writes = (PM.instance_effects effects inst).writes in
       List.iter writes ~f:(fun (w : PM.access) ->
           Option.iter (PM.resolve c inst.resource w.target) ~f:(fun r ->
               Hashtbl.add_multi by_key ~key:r.key ~data:(r, inst, w.ti))));

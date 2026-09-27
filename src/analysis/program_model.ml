@@ -124,6 +124,7 @@ type instance = {
   type_name : string option;
   task : string;
   resource : S.resource_decl;
+  connections : S.ProgramConfig.connection list;
 }
 
 let instances (c : S.configuration_decl) =
@@ -147,7 +148,25 @@ let instances (c : S.configuration_decl) =
             | None -> task
           in
           { name = S.ProgramConfig.get_name pc; type_name = S.ProgramConfig.get_type_name pc;
-            task; resource = r }))
+            task; resource = r; connections = S.ProgramConfig.get_connections pc }))
+
+let connection_writes inst =
+  List.filter_map inst.connections ~f:(fun (c : S.ProgramConfig.connection) ->
+      match c.dir, c.other with
+      | S.ProgramConfig.ConnOut, Some v ->
+        let target =
+          match S.VarUse.get_loc v with
+          | S.VarUse.DirVar dv ->
+            Option.some_if (is_written_address dv) (Address (S.DirVar.get_name dv))
+          (* Sinks are globals, declared or not. *)
+          | S.VarUse.SymVar _ -> Some (Global (S.VarUse.get_name v, true))
+        in
+        Option.map target ~f:(fun target -> { target; ti = S.VarUse.get_ti v; pou = inst.name })
+      | _ -> None)
+
+let instance_effects effects inst =
+  let e = Option.value_map inst.type_name ~default:{ writes = []; calls = [] } ~f:effects in
+  { e with writes = e.writes @ connection_writes inst }
 
 type resolved = { key : string; global : string option; address : string option }
 
@@ -196,7 +215,7 @@ let same_task elements ~select ~keep =
       | S.IECConfiguration (_, c) ->
         let groups = String.Table.create () in
         List.iter (instances c) ~f:(fun inst ->
-            let accesses = Option.value_map inst.type_name ~default:[] ~f:(fun t -> select (effects t)) in
+            let accesses = select (instance_effects effects inst) in
             List.iter accesses ~f:(fun (a : access) ->
                 Option.iter (resolve c inst.resource a.target) ~f:(fun r ->
                     if keep r then

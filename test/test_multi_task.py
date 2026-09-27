@@ -188,3 +188,75 @@ def test_different_configurations(tmp_path):
 
 def test_no_configuration(tmp_path):
     check(tmp_path, program('prog_a', '  g := 1;') + program('prog_b', '  g := 2;'))
+
+
+# {{{ Connections of program outputs in the configuration
+def conn_program(name, body='  y := 1;'):
+    return f"""
+PROGRAM {name}
+  VAR_OUTPUT y : INT; END_VAR
+{body}
+END_PROGRAM
+"""
+
+
+def test_output_connected_to_global(tmp_path):
+    """[p1 : prog_a(y => g)] writes g each time p1 runs."""
+    [w1, w2] = check(tmp_path, config(f"""    PROGRAM p1 WITH fast : prog_a(y => g); {MARKER}
+    PROGRAM p2 WITH slow : prog_b;""")
+                     + conn_program('prog_a')
+                     + program('prog_b', f'  g := 2; {MARKER}'))
+    assert w1.msg == ('Global variable G is written by programs in different tasks: '
+                      'P1 (task RES.FAST), P2 (task RES.SLOW)')
+
+
+def test_outputs_connected_in_two_tasks(tmp_path):
+    check(tmp_path, config(f"""    PROGRAM p1 WITH fast : prog_a(y => %QW5); {MARKER}
+    PROGRAM p2 WITH slow : prog_a(y => %QW5); {MARKER}""")
+          + conn_program('prog_a'))
+
+
+def test_outputs_connected_to_different_globals(tmp_path):
+    check(tmp_path, config("""    PROGRAM p1 WITH fast : prog_a(y => g);
+    PROGRAM p2 WITH slow : prog_a(y => g_out);""")
+          + conn_program('prog_a'))
+
+
+def test_input_connection_is_not_a_write(tmp_path):
+    check(tmp_path, config("""    PROGRAM p1 WITH fast : prog_a(u := g);
+    PROGRAM p2 WITH slow : prog_b;""")
+          + """
+PROGRAM prog_a
+  VAR_INPUT u : INT; END_VAR
+  VAR x : INT; END_VAR
+  x := u;
+END_PROGRAM
+""" + program('prog_b', '  g := 2;'))
+# }}}
+
+
+def test_outputs_connected_in_one_task_are_cp12(tmp_path):
+    """Two instances in one task writing the same output through connections
+    write it twice in each cycle of the task."""
+    f = tmp_path / 'input.st'
+    f.write_text(config("""    PROGRAM p1 WITH fast : prog_a(y => %QW5);
+    PROGRAM p2 WITH fast : prog_a(y => %QW5);""") + conn_program('prog_a'))
+    warns, rc = run_checker([str(f)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    [w] = filter_warns(warns, 'PLCOPEN-CP12')
+    assert w.linenr == 15  # p2
+    assert 'program P1 in the same task (RES.FAST) also writes it' in w.msg
+
+
+def test_output_connected_to_global_is_cp26(tmp_path):
+    f = tmp_path / 'input.st'
+    f.write_text(config("""    PROGRAM p1 WITH fast : prog_a(y => g);
+    PROGRAM p2 WITH fast : prog_b;""") + conn_program('prog_a')
+                 + program('prog_b', '  g := 2;'))
+    warns, rc = run_checker([str(f)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert len(filter_warns(warns, 'PLCOPEN-CP26')) == 1

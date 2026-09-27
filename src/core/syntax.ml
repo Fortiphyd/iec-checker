@@ -798,8 +798,18 @@ module ProgramConfig = struct
     fb_task : Task.t;
   } [@@deriving to_yojson]
 
+  type direction = ConnIn | ConnOut
+  [@@deriving to_yojson]
+
+  (** A program input connected to a data source, or an output to a sink. *)
+  type connection = {
+    param : VarUse.t;
+    dir : direction;
+    other : VarUse.t option; (** [None] for a constant source *)
+  } [@@deriving to_yojson]
+
   type conf_elem =
-    | Cnxn of VarUse.t
+    | Cnxn of connection
     | Fb_task of fb_task
 
   type t = {
@@ -810,6 +820,7 @@ module ProgramConfig = struct
     conn_vars : VarUse.t list; (** Variables connected to program data flow. *)
     type_name : string option; (** POU type name referenced in configuration. *)
     fb_tasks : fb_task list;
+    connections : connection list;
   } [@@deriving to_yojson]
 
   let create name ti =
@@ -817,7 +828,7 @@ module ProgramConfig = struct
     let task = None in
     let conn_vars = [] in
     let type_name = None in
-    { name; ti; qual; task; conn_vars; type_name; fb_tasks = [] }
+    { name; ti; qual; task; conn_vars; type_name; fb_tasks = []; connections = [] }
 
   let set_qualifier pc q = { pc with qual = Some q }
 
@@ -826,12 +837,12 @@ module ProgramConfig = struct
   let set_conn_vars pc conn_vars = { pc with conn_vars }
 
   let set_conf_elems pc elems =
-    let conn_vars, fb_tasks =
+    let connections, fb_tasks =
       List.partition_map elems ~f:(function
-          | Cnxn v -> Either.First v
+          | Cnxn c -> Either.First c
           | Fb_task t -> Either.Second t)
     in
-    { pc with conn_vars; fb_tasks }
+    { pc with conn_vars = List.map connections ~f:(fun c -> c.param); fb_tasks; connections }
 
   let set_type_name pc tn = { pc with type_name = Some tn }
 
@@ -844,6 +855,8 @@ module ProgramConfig = struct
   let get_task t = t.task
 
   let get_fb_tasks t = t.fb_tasks
+
+  let get_connections t = t.connections
 
   let to_yojson t = to_yojson t
 end

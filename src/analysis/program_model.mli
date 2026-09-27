@@ -31,12 +31,23 @@ type instance = {
   type_name : string option; (** Program type *)
   task : string; (** Task, qualified by the resource if it has a name *)
   resource : S.resource_decl;
+  connections : S.ProgramConfig.connection list;
+  (** Connections of the instance's inputs and outputs *)
 }
 
 val instances : S.configuration_decl -> instance list
 (** Program instances of a configuration, in declaration order. Programs
     without a task run in the background, which counts as a task named
     "(none)". *)
+
+val connection_writes : instance -> access list
+(** Writes of the globals, outputs and memory that outputs of the instance
+    are connected to ([PROGRAM P : T(out => sink)]), which happen each time
+    the instance runs. Their [pou] is the name of the instance. *)
+
+val instance_effects : (string -> effects) -> instance -> effects
+(** [instance_effects effects inst] Effects of the program type of [inst],
+    given [effects elements], and the writes of its output connections. *)
 
 type resolved = {
   key : string; (** Identifies the variable within the configuration *)

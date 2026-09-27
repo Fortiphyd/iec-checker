@@ -16,14 +16,24 @@ let declared_globals elems =
   |> String.Set.of_list
 
 (** For each PROGRAM, in order, its writes to global variables, including
-    those of the function blocks and functions it calls. *)
+    those of the function blocks and functions it calls and those of the
+    globals its outputs are connected to in configurations. *)
 let program_writes elems =
   let effects = PM.effects elems in
   let globals = declared_globals elems in
+  let connected =
+    List.concat_map elems ~f:(function
+        | S.IECConfiguration (_, c) ->
+          List.filter_map (PM.instances c) ~f:(fun inst ->
+              Option.map inst.type_name ~f:(fun t -> (t, PM.connection_writes inst)))
+        | _ -> [])
+    |> String.Map.of_alist_reduce ~f:( @ )
+  in
   List.filter_map elems ~f:(function
       | S.IECProgram (_, p) ->
         let writes =
-          List.filter_map (effects p.name).writes ~f:(fun (w : PM.access) ->
+          (effects p.name).writes @ Option.value (Map.find connected p.name) ~default:[]
+          |> List.filter_map ~f:(fun (w : PM.access) ->
               match w.target with
               | PM.Global (n, is_ext) when is_ext || Set.mem globals n -> Some (n, w)
               | _ -> None)
