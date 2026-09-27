@@ -8,6 +8,9 @@ type t = {
   disabled_detectors : string list;
   enabled_detectors  : string list;
   mccabe_complexity  : int;
+  mccabe_variant     : string;
+  (** "standard" McCabe complexity, or "plcopen", weighted to reproduce the
+      examples of PLCopen rule CP9 *)
   statements_count   : int;
   max_string_length  : int;
   duplicate_code_size : int;

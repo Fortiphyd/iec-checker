@@ -7,9 +7,10 @@
    Halstead complexity of 44,9
    Elshof complexity of 0,14
 
-  NOTE: I'm not sure how they evaluated number of statements and appropriate
-  complexity metrics. I have 4 additional statements for this program, and it
-  seems correct for me.
+  Counting each statement once, including ELSIF but not ELSE, gives their 18
+  statements. Their McCabe value comes out with the "plcopen" variant; the
+  standard McCabe complexity is 8. CHARCURVE2 is the improved version of the
+  rule's example: 12 statements, and McCabe complexity 8 (standard: 6).
  *)
 
 FUNCTION_BLOCK CHARCURVE
@@ -59,5 +60,42 @@ FUNCTION_BLOCK CHARCURVE
     END_IF;
   ELSE
     ERR := 4;
+  END_IF;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK CHARCURVE2
+  VAR_INPUT
+    IN:INT;
+    N:BYTE;
+  END_VAR
+  VAR_OUTPUT
+    OUT:INT;
+    ERR: BYTE;
+  END_VAR
+  VAR
+    I:INT;
+    iIndexFound:INT;
+  END_VAR
+
+  OUT := 0;
+  ERR := 0;
+  iIndexFound := -1;
+  FOR I := 1 TO N-1 DO
+    (* IF iIndexFound < 0 AND ERR = 0 THEN *)
+    IF iIndexFound < 0 AND ERR = 0 THEN
+      (* IF P[I-1].X >= P[I].X THEN *)
+      IF a >= a THEN
+        ERR := 1;
+      (* ELSIF IN <= P[I].X THEN *)
+      ELSIF IN <= a THEN
+        iIndexFound := I;
+      END_IF;
+    END_IF;
+  END_FOR;
+  IF ERR = 0 THEN
+    (* OUT := CalculateOut(P[iIndexFound], P[iIndexFound - 1]); *)
+    OUT := a;
+  ELSE
+    OUT := 0;
   END_IF;
 END_FUNCTION_BLOCK

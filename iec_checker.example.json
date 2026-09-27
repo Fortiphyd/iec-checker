@@ -2,6 +2,7 @@
   "detectors": { "disabled": [], "enabled": [] },
   "thresholds": {
     "mccabe_complexity": 15,
+    "mccabe_variant": "standard",
     "statements_count": 25,
     "max_string_length": 4096,
     "duplicate_code_size": 25

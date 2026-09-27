@@ -280,11 +280,39 @@ def test_cp9():
     fdump = f'{f}.dump.json'
     warns, rc = run_checker([f])
     assert rc == 0
-    # 27 statements; its McCabe complexity is 8, below the default of 15.
-    [w] = filter_warns(warns, 'PLCOPEN-CP9')
-    assert w.msg == 'CHARCURVE is too complex (27 statements)'
+    # Both are within the default thresholds of 15 and 25.
+    assert filter_warns(warns, 'PLCOPEN-CP9') == []
     with DumpManager(fdump):
         pass
+
+
+def test_cp9_rule_examples(tmp_path):
+    """The values of the rule's examples: statements, and McCabe complexity in
+    both variants."""
+    f = 'st/plcopen-cp9.st'
+    for variant, suffix, mccabe in [
+            ('standard', '', (8, 6)),
+            ('plcopen', ", weighted as in PLCopen's examples", (12, 8))]:
+        cfg = tmp_path / 'iec_checker.json'
+        cfg.write_text(json.dumps({'thresholds': {
+            'mccabe_complexity': 0, 'statements_count': 0, 'mccabe_variant': variant}}))
+        warns, rc = run_checker([f], args=['-c', str(cfg)])
+        assert rc == 0
+        with DumpManager(f'{f}.dump.json'):
+            pass
+        assert sorted(w.msg for w in filter_warns(warns, 'PLCOPEN-CP9')) == sorted([
+            f'CHARCURVE is too complex ({mccabe[0]} McCabe complexity{suffix})',
+            'CHARCURVE is too complex (18 statements)',
+            f'CHARCURVE2 is too complex ({mccabe[1]} McCabe complexity{suffix})',
+            'CHARCURVE2 is too complex (12 statements)'])
+
+
+def test_cp9_unknown_variant(tmp_path):
+    cfg = tmp_path / 'iec_checker.json'
+    cfg.write_text(json.dumps({'thresholds': {'mccabe_variant': 'myers'}}))
+    rc, out = run_checker_full_out(['st/plcopen-cp9.st'], binary_default, '-c', str(cfg))
+    assert rc != 0
+    assert 'thresholds.mccabe_variant: unknown variant "myers"' in out
 
 
 def test_cp9_mccabe(tmp_path):
@@ -576,14 +604,17 @@ def test_n9_reports_type_position(tmp_path):
     assert sorted(w.linenr for w in filter_warns(warns, 'PLCOPEN-N9')) == [1, 3]
 
 
-def test_cp9_names_the_pou():
+def test_cp9_names_the_pou(tmp_path):
     f = 'st/plcopen-cp9.st'
-    warns, rc = run_checker([f])
+    cfg = tmp_path / 'iec_checker.json'
+    cfg.write_text(json.dumps({'thresholds': {'statements_count': 0}}))
+    warns, rc = run_checker([f], args=['-c', str(cfg)])
     assert rc == 0
     with DumpManager(f'{f}.dump.json'):
         pass
     ws = filter_warns(warns, 'PLCOPEN-CP9')
-    assert ws and all(w.linenr > 0 and w.msg.startswith('CHARCURVE is too complex') for w in ws)
+    assert {w.msg.split(' is ')[0] for w in ws} == {'CHARCURVE', 'CHARCURVE2'}
+    assert all(w.linenr > 0 for w in ws)
 # }}}
 
 

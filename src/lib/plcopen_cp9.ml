@@ -2,7 +2,6 @@ open Core
 open IECCheckerCore
 open IECCheckerAnalysis
 
-module AU = Ast_util
 module S = Syntax
 module CC = Cyclomatic_complexity
 
@@ -14,13 +13,15 @@ let warn_at elem what =
   | None -> Warn.mk 0 0 "PLCOPEN-CP9" (Printf.sprintf "Code is too complex (%s)" what)
 
 let get_mccabe_violations elem =
-  let cc = CC.mccabe elem in
+  let plcopen = String.equal (Config.get ()).mccabe_variant "plcopen" in
+  let cc = if plcopen then CC.mccabe_plcopen elem else CC.mccabe elem in
   if cc > Config.mccabe_complexity_threshold () then
-    [warn_at elem (Printf.sprintf "%d McCabe complexity" cc)]
+    [warn_at elem (Printf.sprintf "%d McCabe complexity%s" cc
+                     (if plcopen then ", weighted as in PLCopen's examples" else ""))]
   else []
 
 let get_statements_num_violations elem =
-  let stmts_num = AU.get_stmts_num elem in
+  let stmts_num = CC.statements elem in
   if stmts_num > Config.statements_num_threshold () then
     [warn_at elem (Printf.sprintf "%d statements" stmts_num)]
   else []

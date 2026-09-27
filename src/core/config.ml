@@ -9,6 +9,7 @@ type t = {
   disabled_detectors : string list;
   enabled_detectors  : string list;
   mccabe_complexity  : int;
+  mccabe_variant     : string;
   statements_count   : int;
   max_string_length  : int;
   duplicate_code_size : int;
@@ -40,6 +41,7 @@ let default = {
   disabled_detectors = [];
   enabled_detectors  = [];
   mccabe_complexity  = 15;
+  mccabe_variant     = "standard";
   statements_count   = 25;
   max_string_length  = 4096;
   duplicate_code_size = 25;
@@ -182,6 +184,10 @@ let of_yojson (json : Yojson.Safe.t) : (t, string) result =
       disabled_detectors = string_list_field detectors "disabled"  ~default:default.disabled_detectors;
       enabled_detectors  = string_list_field detectors "enabled"   ~default:default.enabled_detectors;
       mccabe_complexity  = int_field thresholds "mccabe_complexity" ~default:default.mccabe_complexity;
+      mccabe_variant     =
+        (match string_field thresholds "mccabe_variant" ~default:default.mccabe_variant with
+         | "standard" | "plcopen" as v -> v
+         | v -> invalid "thresholds.mccabe_variant: unknown variant %S; expected standard or plcopen" v);
       statements_count   = int_field thresholds "statements_count"  ~default:default.statements_count;
       max_string_length  = int_field thresholds "max_string_length" ~default:default.max_string_length;
       duplicate_code_size = int_field thresholds "duplicate_code_size" ~default:default.duplicate_code_size;
@@ -230,6 +236,7 @@ let to_yojson (c : t) : Yojson.Safe.t =
     ];
     "thresholds", `Assoc [
       "mccabe_complexity", `Int c.mccabe_complexity;
+      "mccabe_variant", `String c.mccabe_variant;
       "statements_count",  `Int c.statements_count;
       "max_string_length", `Int c.max_string_length;
       "duplicate_code_size", `Int c.duplicate_code_size;
