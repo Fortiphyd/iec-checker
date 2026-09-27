@@ -806,7 +806,7 @@ module ProgramConfig = struct
     fb_task : Task.t;
   } [@@deriving to_yojson]
 
-  type direction = ConnIn | ConnOut
+  type direction = ConnInput | ConnOutput
   [@@deriving to_yojson]
 
   (** A program input connected to a data source, or an output to a sink. *)

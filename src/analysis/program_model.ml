@@ -153,7 +153,7 @@ let instances (c : S.configuration_decl) =
 let connection_writes inst =
   List.filter_map inst.connections ~f:(fun (c : S.ProgramConfig.connection) ->
       match c.dir, c.other with
-      | S.ProgramConfig.ConnOut, Some v ->
+      | S.ProgramConfig.ConnOutput, Some v ->
         let target =
           match S.VarUse.get_loc v with
           | S.VarUse.DirVar dv ->

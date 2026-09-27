@@ -1766,10 +1766,10 @@ let fb_task :=
 let prog_cnxn :=
   (* Input *)
   | sv = symbolic_variable; T_ASSIGN; src = prog_data_source;
-  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnIn; other = src } }
+  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnInput; other = src } }
   (* Output *)
   | sv = symbolic_variable; T_SENDTO; dst = data_sink;
-  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnOut; other = Some dst } }
+  { Syntax.ProgramConfig.{ param = mk_var_use_sym sv; dir = ConnOutput; other = Some dst } }
 
 let prog_data_source :=
   | constant; { None }

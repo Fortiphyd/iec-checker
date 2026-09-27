@@ -517,8 +517,8 @@ module ProgramConfig : sig
   }
 
   type direction =
-    | ConnIn (** [input := source] *)
-    | ConnOut (** [output => sink] *)
+    | ConnInput (** [input := source] *)
+    | ConnOutput (** [output => sink] *)
 
   (** A program input connected to a data source, or an output to a sink:
       a global variable or a directly represented variable. *)

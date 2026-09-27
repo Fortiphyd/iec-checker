@@ -729,9 +729,9 @@ let check_connections env findings (c : S.configuration_decl) =
                 let inputs =
                   List.filter_map conns ~f:(fun (cn : S.ProgramConfig.connection) ->
                       match cn.dir with
-                      | S.ProgramConfig.ConnIn ->
+                      | S.ProgramConfig.ConnInput ->
                         Some (S.VarUse.get_name cn.param, source_taint env cn.other)
-                      | S.ProgramConfig.ConnOut -> None)
+                      | S.ProgramConfig.ConnOutput -> None)
                 in
                 let args p = Option.value (List.Assoc.find inputs ~equal:String.equal p) ~default:clean in
                 (* Sinks in the program reached from its inputs *)
@@ -742,7 +742,7 @@ let check_connections env findings (c : S.configuration_decl) =
                 (* Outputs connected to physical outputs *)
                 List.iter conns ~f:(fun (cn : S.ProgramConfig.connection) ->
                     match cn.dir, cn.other with
-                    | S.ProgramConfig.ConnOut, Some v when is_sink env v ->
+                    | S.ProgramConfig.ConnOutput, Some v when is_sink env v ->
                       let t =
                         subst args (Option.value (Map.find sm.results (S.VarUse.get_name cn.param))
                                       ~default:clean)
