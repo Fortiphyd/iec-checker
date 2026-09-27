@@ -23,6 +23,10 @@ RUN eval $(opam env) && make build
 
 FROM ubuntu:22.04
 
+LABEL org.opencontainers.image.source="https://github.com/Fortiphyd/iec-checker"
+LABEL org.opencontainers.image.description="Static analysis of IEC 61131-3 programs"
+LABEL org.opencontainers.image.licenses="LGPL-3.0-or-later"
+
 COPY --from=build-env /home/opam/src/_build/install/default/bin/iec_checker /usr/local/bin/iec_checker
 
 ENTRYPOINT ["iec_checker"]

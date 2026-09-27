@@ -1,0 +1,115 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds the binaries and publishes them as a GitHub
+# release. Running the workflow by hand, or a push that changes the build,
+# only builds them, as artifacts of the run. See docs/releasing.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+    # Also build, without publishing, when a push to a branch changes the
+    # build. Tags aren't filtered by paths.
+    branches:
+      - '**'
+    paths:
+      - '.github/workflows/release.yml'
+      - 'dune-project'
+      - 'iec_checker.opam'
+      - 'src/**/dune'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built statically (the release profile), so it runs on any Linux
+          - os: ubuntu-22.04
+            target: linux-x86_64
+            profile: release
+          # macOS doesn't allow static executables
+          - os: macos-14
+            target: macos-arm64
+            profile: dev
+          - os: windows-latest
+            target: windows-x86_64
+            profile: release
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version=$(sed -n 's/^(version \(.*\))$/\1/p' dune-project)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match version $version in dune-project"
+            exit 1
+          fi
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: '5.2.x'
+
+      - name: Build
+        run: |
+          opam install --deps-only -y .
+          opam exec -- dune build --profile ${{ matrix.profile }} @install
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          bin=_build/install/default/bin/iec_checker
+          "$bin" --version
+          "$bin" test/st/plcopen-cp7.st > /dev/null
+
+      - name: Package
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="$GITHUB_REF_NAME"; else version="${GITHUB_SHA::7}"; fi
+          name="iec_checker-$version-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp _build/install/default/bin/iec_checker* "dist/$name/"
+          cp -r LICENSE README.md CHANGES.md iec_checker.example.json docs "dist/$name/"
+          cd dist
+          if [ "$RUNNER_OS" = Windows ]; then
+            7z a "$name.zip" "$name" > /dev/null
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+          rm -r "$name"
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" --generate-notes *

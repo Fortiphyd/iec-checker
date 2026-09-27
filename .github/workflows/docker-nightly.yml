@@ -5,18 +5,27 @@ on:
     - cron: '0 2 * * 1'  # every Monday at 02:00 UTC
   workflow_dispatch:
 
+# Images are published to the GitHub Container Registry of the repository,
+# which needs no secrets besides the workflow's token.
+env:
+  IMAGE: ghcr.io/fortiphyd/iec-checker
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to Docker Hub
+      - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -26,6 +35,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/iec-checker:nightly
+          tags: ${{ env.IMAGE }}:nightly
           cache-from: type=gha
           cache-to: type=gha,mode=max
