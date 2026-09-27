@@ -18,18 +18,9 @@ let check_prefix prefixes keys name (ti : IECCheckerCore.Tok_info.t) =
     let msg = Printf.sprintf "%s %s should start with prefix %S" kind name prefix in
     Some (Warn.mk_for_name ~name ti.linenr ti.col "PLCOPEN-N10" msg)
 
-let keys = function
-  | S.IECType (_, _, (_, spec)) -> Naming.type_kinds spec @ ["UDT"]
-  | S.IECFunction _ -> ["FUNCTION"]
-  | S.IECFunctionBlock _ -> ["FUNCTION_BLOCK"]
-  | S.IECProgram _ -> ["PROGRAM"]
-  | S.IECClass _ -> ["CLASS"]
-  | S.IECInterface _ -> ["INTERFACE"]
-  | S.IECConfiguration _ -> []
-
 let check_elem prefixes e =
   Option.bind (S.get_pou_name_as_written e) ~f:(fun (name, ti) ->
-      check_prefix prefixes (keys e) name ti)
+      check_prefix prefixes (Naming.element_kinds e) name ti)
   |> Option.to_list
 
 let do_check elems =

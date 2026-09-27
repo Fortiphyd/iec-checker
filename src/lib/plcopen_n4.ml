@@ -70,11 +70,13 @@ let is_constant vd =
   | Some (S.VarDecl.VarGlobal (Some S.VarDecl.QConstant)) -> true
   | _ -> false
 
-let check_identifier ~style name linenr col =
+(** [checked] is the part of [name] that has the style, if not all of it. *)
+let check_identifier ?checked ~style name linenr col =
   match Option.bind style ~f:predicate_of_style with
   | None -> None
   | Some (pred, label) ->
-    if pred name then None
+    let checked = Option.value checked ~default:name in
+    if String.is_empty checked || pred checked then None
     else
       let msg = Printf.sprintf
           "Identifier %s does not match required case %s" name label
@@ -134,16 +136,23 @@ let check_elem cfg elem =
     @ List.filter_map decls ~f:S.VarDecl.get_ty_spec
     |> List.concat_map ~f:(members_and_values cfg)
   in
+  (* The case applies after the prefix of the name (PLCopen N10), which the
+     rule proposes in capitals: PRG_Main is UpperCamelCase with prefix PRG_. *)
+  let without_prefix name =
+    Naming.strip_prefix cfg.Config.naming_udt_prefixes (Naming.element_kinds elem) name
+  in
   let pou_warn =
     match pou_name_and_loc elem with
     | Some (name, linenr, col) ->
-      check_identifier ~style:cfg.Config.naming_case_pou name linenr col
+      check_identifier ~checked:(without_prefix name) ~style:cfg.Config.naming_case_pou
+        name linenr col
     | None -> None
   in
   let type_warn =
     match type_name_and_loc elem with
     | Some (name, linenr, col) ->
-      check_identifier ~style:cfg.Config.naming_case_type name linenr col
+      check_identifier ~checked:(without_prefix name) ~style:cfg.Config.naming_case_type
+        name linenr col
     | None -> None
   in
   var_warns

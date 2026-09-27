@@ -17,6 +17,16 @@ val type_kinds : S.derived_ty_decl_spec -> string list
 (** Keys of the kind of a type declaration: STRUCT, ENUM, ..., most specific
     first. An enum with a base type is NAMED, then ENUM. *)
 
+val element_kinds : S.iec_library_element -> string list
+(** Keys of the kind of a type or POU for its name prefix (PLCopen N10), most
+    specific first: ENUM, ..., UDT for types; FUNCTION, FUNCTION_BLOCK,
+    PROGRAM, CLASS or INTERFACE for POUs. *)
+
+val strip_prefix : (string * string) list -> string list -> string -> string
+(** [strip_prefix prefixes keys name] [name] without the prefix configured for
+    the first of [keys] that has one, and an underscore after it, if it has
+    that prefix. *)
+
 val var_decls : S.iec_library_element -> S.VarDecl.t list
 (** Variables declared by an element, including the global variables of the
     resources of a configuration. *)

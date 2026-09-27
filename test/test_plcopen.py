@@ -458,6 +458,30 @@ def test_n10_all_kinds():
     assert msgs[32] == 'PROGRAM Main should start with prefix "PRG"'
 
 
+def test_n4_case_after_n10_prefix(tmp_path):
+    """PRG_Main is UpperCamelCase after its prefix PRG_."""
+    f = tmp_path / 'p.st'
+    f.write_text('PROGRAM PRG_Main\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n'
+                 'PROGRAM PRG_main2\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n'
+                 'PROGRAM Other\nVAR x : INT; END_VAR\nx := 1;\nEND_PROGRAM\n')
+    cfg = tmp_path / 'c.json'
+    cfg.write_text(json.dumps({'naming_conventions': {
+        'case': {'pou': 'UpperCamelCase'}, 'udt_prefixes': {'PROGRAM': 'PRG_'}}}))
+    warns, rc = run_checker([str(f)], args=['-c', str(cfg)])
+    assert rc == 0
+    with DumpManager(f'{f}.dump.json'):
+        pass
+    assert [w.linenr for w in filter_warns(warns, 'PLCOPEN-N4')] == [5]
+    # PRG_main2 has the prefix; only its case is wrong.
+    assert [w.linenr for w in filter_warns(warns, 'PLCOPEN-N10')] == [9]
+
+
+def test_example_config_loads():
+    rc, out = run_checker_full_out(['st/plcopen-n4.st'], binary_default,
+                                   '-c', '../iec_checker.example.json')
+    assert rc == 0, out
+
+
 def test_naming_config_errors(tmp_path):
     """Unknown case styles and prefix keys are errors, not silently
     ignored."""

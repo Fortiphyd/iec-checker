@@ -13,20 +13,29 @@
     "type_prefixes": {
       "INT": "i",
       "BOOL": "x",
-      "REAL": "r"
+      "REAL": "r",
+      "ARRAY": "a",
+      "FUNCTION_BLOCK": "fb"
+    },
+    "scope_prefixes": {
+      "GLOBAL": "g"
     },
     "case": {
       "variable": "lowerCamelCase",
       "constant": "UPPER_SNAKE_CASE",
       "pou":      "UpperCamelCase",
-      "type":     "UpperCamelCase"
+      "type":     "UpperCamelCase",
+      "struct_member": "lowerCamelCase",
+      "enum_value": "UPPER_SNAKE_CASE"
     },
-    "min_length": 3,
+    "min_length": 8,
+    "min_length_local": 3,
     "max_length": 25,
     "udt_prefixes": {
       "STRUCT":         "ST_",
       "ENUM":           "E_",
-      "FUNCTION_BLOCK": "FB_"
+      "FUNCTION_BLOCK": "FB_",
+      "PROGRAM":        "PRG_"
     }
   }
 }
