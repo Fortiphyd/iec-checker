@@ -11,8 +11,8 @@ module AU = IECCheckerCore.Ast_util
    Exempt, as in the rule or because they are initialized elsewhere: inputs,
    in-outs, externals and globals; RETAIN and CONSTANT variables; variables
    at physical inputs; function block instances, including of types not
-   declared in the analyzed code; and variables of types with a default
-   initial value. Writing an element or a member counts as
+   declared in the analyzed code; references and pointers, which are NULL;
+   and variables of types with a default initial value. Writing an element or a member counts as
    initializing the variable. *)
 
 let std_fbs = ["TON"; "TOF"; "TP"; "CTU"; "CTD"; "CTUD"; "R_TRIG"; "F_TRIG"; "SR"; "RS"]
@@ -52,6 +52,8 @@ let needs_init types fbs d =
        library or another file, which initializes its instances. *)
     | Some (S.DTyDeclSingleElement (S.DTySpecSimple ty, _)) ->
       not (Map.mem types ty) || has_default types fbs 0 ty
+    (* References and pointers are NULL until assigned. *)
+    | Some (S.DTyDeclRefType _) -> true
     | _ -> false
   in
   local && not (S.VarDecl.get_was_init d) && not at_input && not typed_default
