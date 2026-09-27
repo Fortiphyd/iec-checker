@@ -17,7 +17,8 @@ iec_checker.native
 doc/grammar.html
 
 _build/
-.dump.json
+*.dump.json
+test/st/_TEMP_*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
