@@ -314,6 +314,39 @@ let finalize ws =
           | Some m, Some imp -> W.severity_rank imp >= W.severity_rank m
           | Some _, None -> false))
 
+(* Columns count bytes. On lines with characters outside ASCII, such as
+   accented names or comments, they are converted to count characters. *)
+let file_lines : string array String.Table.t = String.Table.create ()
+
+let lines_of file =
+  Hashtbl.find_or_add file_lines file ~default:(fun () ->
+      try Array.of_list (In_channel.read_lines file) with _ -> [||])
+
+let char_columns ws =
+  List.map ws ~f:(fun (w : W.t) ->
+      let lines = if String.is_empty w.file then [||] else lines_of w.file in
+      if w.linenr <= 0 || w.linenr > Array.length lines then w
+      else begin
+        let line = lines.(w.linenr - 1) in
+        if String.for_all line ~f:(fun c -> Char.to_int c < 0x80) then w
+        else begin
+          (* Characters in the first [n] bytes: UTF-8 continuation bytes
+             (10xxxxxx) don't start one. *)
+          let chars n =
+            if n <= 0 then n
+            else begin
+              let upto = Int.min n (String.length line) in
+              let count = ref (n - upto) in
+              for i = 0 to upto - 1 do
+                if Char.to_int line.[i] land 0xC0 <> 0x80 then incr count
+              done;
+              !count
+            end
+          in
+          { w with column = chars w.column; start_column = chars w.start_column }
+        end
+      end)
+
 let sarif_rules () =
   List.map Lib.registered_detectors ~f:(fun d ->
       WO.{ rule_id = d.Detector.id; rule_name = d.name; help_url = d.doc_url;
@@ -327,7 +360,7 @@ let sarif_rules () =
 let pending : W.t list ref = ref []
 
 let report ~use_color out_fmt ws =
-  let ws = finalize ws in
+  let ws = finalize ws |> char_columns in
   match out_fmt with
   | WO.Json | WO.Sarif -> pending := !pending @ ws
   | WO.Plain -> WO.print_report ~doc_urls ~use_color ws out_fmt

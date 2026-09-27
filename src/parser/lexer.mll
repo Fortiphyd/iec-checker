@@ -192,8 +192,13 @@ let fix_point_ns = (integer | (integer '.' integer)) ("ns" | "NS")
 
 (* Dots join the parts of struct member accesses; one not followed by a name
    character is a separate token, as in bit access [x.%X3] or range [lo..hi]. *)
-let label_char = ['A'-'Z' 'a'-'z' '0'-'9' '_']
-let label = '_'? letter (label_char | '.' label_char)*
+(* Bytes of UTF-8 encoded characters outside ASCII, such as accented or
+   national letters. The standard only allows ASCII letters in identifiers,
+   but some tools accept others; they are lexed so that PLCopen N8 can
+   report them instead of the whole file failing to parse. *)
+let non_ascii = ['\128'-'\255']
+let label_char = ['A'-'Z' 'a'-'z' '0'-'9' '_'] | non_ascii
+let label = '_'? (letter | non_ascii) (label_char | '.' label_char)*
 
 rule initial tokinfo =
   parse
