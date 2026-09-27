@@ -1184,6 +1184,17 @@ let ref_spec :=
   | refs = nonempty_list(T_REF_TO); ty = data_type_access;
   { ((List.length refs), ty) }
 
+(* POINTER TO, an extension of CODESYS and TwinCAT, is kept as a reference.
+   Only in variable declarations: in type declarations it would conflict with
+   type names. *)
+let pointer_spec :=
+  | id = T_IDENTIFIER; T_TO; ty = data_type_access;
+  {
+    let (name, _) = id in
+    if String.equal name "POINTER" then (1, ty)
+    else raise (SyntaxError (Printf.sprintf "Unexpected %s TO" name))
+  }
+
 (* ref_type_name: *)
 
 (* ref_type_access: *)
@@ -1896,7 +1907,21 @@ let primary_expr :=
     let ti = Syntax.stmt_get_ti fc in
     Syntax.ExprFuncCall(ti, fc)
   }
-  (* | ref_value {  } *)
+  (* References: NULL, REF(x) and dereferences such as r^ *)
+  | ref_val = ref_value;
+  {
+    let ti = match ref_val with
+      | Syntax.RefNull | Syntax.RefFBInstance _ -> TI.create_dummy ()
+      | Syntax.RefSymVar sv -> Syntax.SymVar.get_ti sv
+    in
+    Syntax.ExprConstant(ti, Syntax.CPointer(ti, ref_val))
+  }
+  | v = variable_access; derefs = nonempty_list(T_DEREF);
+  {
+    let ti = Syntax.VarUse.get_ti v in
+    List.fold_left derefs ~init:(Syntax.ExprVariable(ti, v))
+      ~f:(fun e _ -> Syntax.ExprUn(ti, Syntax.DEREF, e))
+  }
   | T_LPAREN; ~ = expression; T_RPAREN; <>
 
 (* Helper rule for primary_expr: "use" occurrence of enum element. Since we are not
@@ -1944,6 +1969,17 @@ let func_call :=
     let ti = Syntax.Function.get_ti f in
     Syntax.StmFuncCall(ti, f, stmts)
   }
+  (* An elementary type as an argument, as in [__NEW(INT, 10)]. The type is
+     passed as a name. *)
+  | f = func_access; T_LPAREN; ty = elem_type_name; rest = list(preceded(T_COMMA, param_assign)); T_RPAREN;
+  {
+    let ti = Syntax.Function.get_ti f in
+    let ty_arg =
+      Syntax.{ name = None; inverted = false;
+               stmt = StmExpr(ti, ExprConstant(ti, CEnumValue(ti, ety_to_string ty))) }
+    in
+    Syntax.StmFuncCall(ti, f, ty_arg :: rest)
+  }
 
 let stmt_list :=
   | s = stmt; option(T_SEMICOLON);
@@ -1964,6 +2000,17 @@ let assign_stmt :=
     let vti = Syntax.VarUse.get_ti v in
     let eti = Syntax.expr_get_ti e in
     Syntax.StmExpr(vti, Syntax.ExprBin(eti, Syntax.ExprVariable(vti, v), Syntax.ASSIGN, e))
+  }
+  (* Assignment through a reference: [r^ := e] *)
+  | v = variable; derefs = nonempty_list(T_DEREF); T_ASSIGN; e = expression;
+  {
+    let vti = Syntax.VarUse.get_ti v in
+    let eti = Syntax.expr_get_ti e in
+    let target =
+      List.fold_left derefs ~init:(Syntax.ExprVariable(vti, v))
+        ~f:(fun e _ -> Syntax.ExprUn(vti, Syntax.DEREF, e))
+    in
+    Syntax.StmExpr(vti, Syntax.ExprBin(eti, target, Syntax.ASSIGN, e))
   }
   (* Bit access such as [x.%X3 := TRUE]. The bit is kept as a member of the
      variable, like a struct field. *)
@@ -2341,7 +2388,7 @@ let var_access_decl :=
   }
 
 let var_ref_decl :=
-  | var_names = separated_nonempty_list(T_COMMA, variable_name); T_COLON; ty_specs = ref_spec;
+  | var_names = separated_nonempty_list(T_COMMA, variable_name); T_COLON; ty_specs = ref_or_pointer_spec;
   {
     let (ref_level, ref_ty) = ty_specs in
     let spec = Syntax.DTyDeclRefType(ref_level, ref_ty, None) in
@@ -2352,6 +2399,10 @@ let var_ref_decl :=
         |> Syntax.VarDecl.create ~ty_spec:(Some(spec))
       end)
   }
+
+let ref_or_pointer_spec :=
+  | ~ = ref_spec; <>
+  | ~ = pointer_spec; <>
 
 (* interface_var_decl: *)
 

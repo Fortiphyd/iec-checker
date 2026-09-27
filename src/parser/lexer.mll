@@ -286,6 +286,13 @@ rule initial tokinfo =
   }
   (* }}} *)
 
+  (* Operators of CODESYS and TwinCAT such as __NEW, __DELETE and
+     __ISVALIDREF. The standard doesn't allow names with two leading
+     underscores, so they don't clash with others. *)
+  | ("__" letter label_char*) as v
+  {
+    T_IDENTIFIER(String.uppercase(v), Tok_info.create_with_raw lexbuf v)
+  }
   (* {{{ Case-insensitive lexing of identifiers and reserved keywords. *)
   | label as v
   {
