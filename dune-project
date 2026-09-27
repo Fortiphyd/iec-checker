@@ -5,11 +5,11 @@
 
 (name iec_checker)
 (version 0.5.0)
-(authors "Georgiy Komarov")
+(authors "Georgiy Komarov" "Fortiphyd Logic")
 (license  LGPL-3.0-or-later)
-(source (github jubnzv/iec-checker))
-(documentation "https://iec-checker.github.io/")
-(maintainers "Georgiy Komarov <jubnzv@gmail.com>")
+(source (github Fortiphyd/iec-checker))
+(documentation "https://github.com/Fortiphyd/iec-checker/tree/master/docs")
+(maintainers "Fortiphyd Logic")
 
 (package
   (name iec_checker)

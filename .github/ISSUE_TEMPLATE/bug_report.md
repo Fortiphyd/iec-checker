@@ -7,8 +7,8 @@ labels: bug
 ### Environment
 
 - **PLC IDE**: (e.g. CODESYS 3.5 SP19, TIA Portal V18, Beckhoff TwinCAT 3.1)
-- **iec-checker version**: (commit hash or release tag)
-- **Platform**: Linux / Windows
+- **iec-checker version**: (the output of `iec_checker --version`, or the commit hash)
+- **Platform**: Linux / macOS / Windows (WSL) / Docker
 
 ### Source code
 

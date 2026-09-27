@@ -25,8 +25,7 @@ Pushing the tag runs two workflows:
   are generated from the commits since the previous release; edit them on
   GitHub afterwards if needed.
 - **Docker release** publishes `ghcr.io/fortiphyd/iec-checker:vX.Y.Z` and
-  `:latest`. **Docker nightly** publishes `:nightly` every Monday, or when run
-  by hand.
+  `:latest`.
 
 The Release workflow also runs, without publishing, when a push changes the
 build (`dune-project`, `dune` files or the workflow itself), and it can be

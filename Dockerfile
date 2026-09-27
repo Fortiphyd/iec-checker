@@ -2,13 +2,6 @@ FROM ocaml/opam:ubuntu-22.04-ocaml-5.2 AS build-env
 
 USER root
 
-RUN apt-get update && \
-    apt-get install -y python3 python3-pip graphviz libgraphviz-dev pkg-config && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY requirements*.txt /tmp/
-RUN pip3 install --no-cache-dir -r /tmp/requirements-dev.txt -r /tmp/requirements.txt
-
 USER opam
 WORKDIR /home/opam/src
 
