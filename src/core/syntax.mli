@@ -305,6 +305,7 @@ and subrange_ty_spec =
 and enum_element_spec = {
   enum_type_name: string option;  (** name of enum which this element belongs to *)
   elem_name: string; (** name of the element *)
+  elem_ti: TI.t; (** position of the name *)
   initial_value: constant option; (** initial value *)
 } [@@deriving to_yojson]
 
@@ -322,6 +323,7 @@ and arr_inval = constant list [@@deriving to_yojson]
 (** Struct element specification *)
 and struct_elem_spec = {
   struct_elem_name: string;
+  struct_elem_ti: TI.t; (** position of the name *)
   struct_elem_loc: DirVar.t option;
   struct_elem_ty: single_element_ty_spec;
   struct_elem_init_value: struct_elem_init_value_spec option; (** initial values *)

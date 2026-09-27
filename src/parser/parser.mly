@@ -937,7 +937,7 @@ let enum_spec_init :=
     let specs = List.fold_left
       values
       ~init:[]
-      ~f:(fun acc (elem_name, _) -> acc @ [Syntax.{ enum_type_name = None; elem_name; initial_value = None }])
+      ~f:(fun acc (elem_name, elem_ti) -> acc @ [Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = None }])
     in
     (specs, default_value_opt)
   }
@@ -949,26 +949,26 @@ let enum_spec_init :=
 let enum_value_spec :=
   | id = T_IDENTIFIER;
   {
-    let elem_name, _ = id in
-    Syntax.{ enum_type_name = None; elem_name; initial_value = None; }
+    let elem_name, elem_ti = id in
+    Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = None; }
   }
   | id = T_IDENTIFIER; T_ASSIGN; initial_value = int_literal;
   {
-    let elem_name, _ = id in
-    Syntax.{ enum_type_name = None; elem_name; initial_value = Some(initial_value); }
+    let elem_name, elem_ti = id in
+    Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = Some(initial_value); }
   }
   | id = T_IDENTIFIER; T_ASSIGN; initial_value = constant_expr;
   {
-    let elem_name, _ = id in
+    let elem_name, elem_ti = id in
     let initial_const = match initial_value with Syntax.ExprConstant (_, c) -> c | _ -> assert false in
-    Syntax.{ enum_type_name = None; elem_name; initial_value = Some(initial_const); }
+    Syntax.{ enum_type_name = None; elem_name; elem_ti; initial_value = Some(initial_const); }
   }
 
 let enum_value :=
   | ty_opt = option(enum_value_opt); id = T_IDENTIFIER;
   {
-    let elem_name, _ = id in
-    Syntax.{ enum_type_name = ty_opt; elem_name; initial_value = None; }
+    let elem_name, elem_ti = id in
+    Syntax.{ enum_type_name = ty_opt; elem_name; elem_ti; initial_value = None; }
   }
 
 (* Helper rule for enum_value and enum_value_use  *)
@@ -1072,14 +1072,16 @@ let struct_decl :=
   { match overlap with Some(v) -> (true, elems) | None -> (false, elems) }
 
 let struct_elem_decl :=
-  | name = struct_elem_name; loc = option(struct_elem_loc); T_COLON; ty = struct_elem_ty; inval = optional_assign(struct_elem_init); T_SEMICOLON;
+  | id = struct_elem_name; loc = option(struct_elem_loc); T_COLON; ty = struct_elem_ty; inval = optional_assign(struct_elem_init); T_SEMICOLON;
   {
+    let (name, struct_elem_ti) = id in
     let struct_elem_init_value  = match inval with
       | Some (_, v) -> Some(v)
       | None -> None
     in
     Syntax.
     { struct_elem_name = name;
+      struct_elem_ti;
       struct_elem_loc = loc;
       struct_elem_ty = ty;
       struct_elem_init_value; }
@@ -1094,8 +1096,7 @@ let struct_elem_loc :=
   | T_AT; ~ = T_DIR_VAR; <>
 
 let struct_elem_name :=
-  | id = T_IDENTIFIER;
-  { let name, _ = id in name }
+  | ~ = T_IDENTIFIER; <>
 
 let struct_init :=
   | T_LPAREN; ~ = separated_nonempty_list(T_COMMA, struct_elem_init); T_RPAREN; <>
@@ -1110,8 +1111,8 @@ let struct_elem_init :=
     in
     ("" (* name *), Syntax.StructElemInvalConstant(c))
   }
-  | name = struct_elem_name; T_ASSIGN; value = enum_value;
-  { (name, Syntax.StructElemInvalEnum(value)) }
+  | id = struct_elem_name; T_ASSIGN; value = enum_value;
+  { (fst id, Syntax.StructElemInvalEnum(value)) }
   (* | name = struct_elem_name; T_ASSIGN; value = array_init; {} *)
   (* | name = struct_elem_name; T_ASSIGN; value = struct_spec_init; *)
   (* {                                                              *)
